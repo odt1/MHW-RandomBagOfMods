@@ -167,6 +167,24 @@ std::string Join(std::span<const std::uint32_t> ids) {
     return text;
 }
 
+// Slot by slot, `_` for an empty slot, trailing empty slots left out.
+std::string JoinSlots(std::span<const std::uint32_t> ids) {
+    std::size_t used = ids.size();
+    while (used != 0 && ids[used - 1] == 0) {
+        --used;
+    }
+    std::string text;
+    for (std::size_t i = 0; i != used; ++i) {
+        if (i != 0) {
+            text += ',';
+        }
+        text += ids[i] == 0 ? std::string("_") : std::to_string(ids[i]);
+    }
+    return text;
+}
+
+constexpr std::array<const char*, 4> kPouchListNames{"items", "ammo", "list 2", "tools"};
+
 bool TakeSnapshot(std::uint8_t* user, Snapshot& snapshot) noexcept {
     return mem::Read(user + kPouchBegin, snapshot.pouch.data(), snapshot.pouch.size()) &&
            mem::Read(user + kItemBar, snapshot.bars.data(), snapshot.bars.size() * sizeof(std::uint32_t));
@@ -245,9 +263,19 @@ void SortNow(std::uint8_t* user, const Snapshot& before) {
         g_apply_sort(user, kSortArea);
         Snapshot after;
         if (TakeSnapshot(user, after)) {
-            const auto old_items = ListItems(before, kPouchLists[0]);
-            const auto new_items = ListItems(after, kPouchLists[0]);
-            SafeLog("Pouch sorted: items [{}] -> [{}].", Join(old_items), Join(new_items));
+            std::string changes;
+            for (std::size_t i = 0; i != kPouchLists.size(); ++i) {
+                const auto old_ids = ListItems(before, kPouchLists[i]);
+                const auto new_ids = ListItems(after, kPouchLists[i]);
+                if (old_ids == new_ids) {
+                    continue;
+                }
+                const std::span<const std::uint32_t> old_view(old_ids.data(), kPouchLists[i].slots);
+                const std::span<const std::uint32_t> new_view(new_ids.data(), kPouchLists[i].slots);
+                changes += std::format("{}{} [{}] -> [{}]", changes.empty() ? "" : "; ", kPouchListNames[i],
+                                       JoinSlots(old_view), JoinSlots(new_view));
+            }
+            SafeLog("Pouch sorted: {}.", changes.empty() ? std::string("no slot changed") : changes);
         }
     }
     if (!g_sort_bar) {

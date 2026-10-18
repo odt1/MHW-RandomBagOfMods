@@ -37,11 +37,21 @@ Every claim is marked **observed** (seen in disassembly, decompiled code, memory
 - `autosort.cpp` hooks sMhMain's per-frame update (`0x1AF2B60`, the same one FairTransmog hooks; MinHook chains over another plugin's jump). Every sixth frame, with a local player (`sub_141B42010(*(exe+0x500ECA0))` non-null) and no pouch menu open, it compares a snapshot of the pouch block (`+0x38080`–`+0x38550`) and both bars with the previous one. After a change it takes the user lock, runs prepare and apply with area 2 when a list is out of order, and rewrites the bars with the editor's two calls when their filled entries do not start with the pouch-derived lists. The snapshot taken afterwards stops it from repeating a write the game rejects.
 - `menus.cpp` hooks the GUI base open, close and destructor and keeps the open/closed state of instances whose DTI name is in its list; sorting waits while one is open and for 300 ms after the last close.
 
+## Live result, 0.1.0 beta (2026-10-19)
+
+Deployed `MHW-AutoAutoSort.dll` 0.1.0-beta next to FairTransmog and other plugins; installed at startup without "over an existing jump" (main update still unhooked at load time).
+
+- **Observed, plugin log 02:35–02:53:** 25 pouch sorts and 5 item bar rewrites in about 17 minutes, all on the main update thread (one thread ID), no failures. New items were sorted in as they arrived, e.g. Gunpowder Level 2 (102) into `[1,2,5,59,81,102,181,183,193,174]`, then Nulberry, Herb, Ivy, mushrooms and bugs one by one, ending with 24 item slots in sort order.
+- **Observed, user-confirmed:** pouch and item bar stay sorted, including when the item pouch overflows (pouch full while gathering).
+- **Observed, log:** the item bar held a special entry 843 after the pouch-derived entries (`item_eng.gmd` has no name for it, "Invalid Message"). The rewrite drops it; later lines show it back at the end of the bar. **Inferred:** the game appends it again by itself; one extra bar rewrite per pouch change, no loop.
+- **Observed, log:** several "Pouch sorted" lines showed the same item order before and after. That log printed only filled item slots. **Inferred:** those sorts closed a gap left by a used-up item, or reordered the ammo or tool list. Later builds log every changed list slot by slot, `_` for an empty slot.
+- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (user reported no problem, not asked specifically).
+
 ## Tooling incident
 
 - **Observed, 2026-10-19 02:21:46:** the game crashed (`frida-agent.dll`, exception `0xC0000409`) when a Frida session with hooks on `sub_141FB79B0` and `sub_141FB55E0` reached its `-t 300` timeout and detached. Earlier sessions with other hooks detached cleanly. **Inferred:** detaching Frida from these hooks is unsafe; the plugin itself does not use Frida.
 
 ## Open questions
 
-- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt.
+- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (see the 0.1.0 live result).
 - **Unknown:** pouch list 2 contents; multiplayer behaviour; master-rank or story states where `sub_141895E80` filters differently.
