@@ -23,7 +23,11 @@ namespace auto_auto_sort::game::autosort {
 namespace {
 
 // RVAs in the unpacked image of profile::kKnownPackedExecutableSha256 (re/FINDINGS.md).
-constexpr std::uintptr_t kMainUpdateRva = 0x1AF2B60;     // sMhMain per-frame update, main thread
+// uGUIHudItemWindow's per-frame update (vtable 0x143471BE0, index 76), reached only through this
+// slot. It rebuilds the on-screen item bar when the local player's "pouch changed" flag is set, so
+// sorting just before it lets that rebuild show the sorted order.
+constexpr std::uintptr_t kHudUpdateRva = 0x1E2B890;
+constexpr std::uintptr_t kHudUpdateSlotRva = 0x3471E40;
 constexpr std::uintptr_t kUserSingletonRva = 0x5013950;   // argument of the user accessor
 constexpr std::uintptr_t kPlayerManagerRva = 0x500ECA0;   // argument of the local player lookup
 constexpr std::uintptr_t kUserAccessorRva = 0x1B8DBB0;    // (singleton) -> selected character's data
@@ -42,7 +46,7 @@ struct Expected {
     std::array<std::uint8_t, 16> bytes;
 };
 // First bytes of every function called; a mismatch installs nothing.
-constexpr std::array<Expected, 10> kCalled{{
+constexpr std::array<Expected, 11> kCalled{{
     {kUserAccessorRva, {0x48, 0x63, 0x81, 0xA0, 0x00, 0x00, 0x00, 0x48, 0x69, 0xC0, 0x00, 0xCC, 0x26, 0x00, 0x48, 0x03}},
     {kLocalPlayerRva, {0x45, 0x33, 0xC9, 0x4C, 0x8D, 0x41, 0x50, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}},
     {kPrepareSortRva, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48}},
@@ -53,11 +57,8 @@ constexpr std::array<Expected, 10> kCalled{{
     {kPouchItemRva, {0x4C, 0x8B, 0xC9, 0x85, 0xD2, 0x0F, 0x84, 0x82, 0x00, 0x00, 0x00, 0x83, 0xEA, 0x01, 0x74, 0x6F}},
     {kClearBarRva, {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48}},
     {kSetBarSlotRva, {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48}},
+    {kHudUpdateRva, {0x40, 0x53, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x50, 0x48, 0x8B, 0xF9, 0xE8, 0xEF, 0xBD, 0xFF}},
 }};
-// Another plugin may already have replaced these nine bytes with a jump; MinHook chains over it.
-constexpr std::array<std::uint8_t, 9> kMainUpdatePrologue{0x40, 0x53, 0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00};
-constexpr std::ptrdiff_t kMainUpdateBodyOffset = 9;
-constexpr std::array<std::uint8_t, 4> kMainUpdateBody{0x48, 0x8B, 0xD9, 0xE8};
 
 // Character data (the user accessor's result). Pouch slots are 16-byte objects: vtable, item ID,
 // count. Auto-sort area 2, the one the start menu's Item Pouch uses, sorts these four lists.
@@ -99,7 +100,6 @@ bool GameAddedEntry(std::uint32_t id) {
     return id == 0x3ED || id == 0x6F6 || id == 0x7AC || (id >= 843 && id <= 854) || (id >= 1022 && id <= 1027);
 }
 
-constexpr unsigned kTickFrames = 6;
 constexpr ULONGLONG kConfigCheckMs = 1000;
 
 constexpr char kDefaultConfig[] =
@@ -112,7 +112,7 @@ constexpr char kDefaultConfig[] =
     "Pouch=1\n"
     "ItemBar=1\n";
 
-using MainUpdateFn = void*(__fastcall*)(void* self);
+using HudUpdateFn = void*(__fastcall*)(void* hud);
 using UserAccessorFn = std::uint8_t*(__fastcall*)(void* singleton);
 using LocalPlayerFn = void*(__fastcall*)(void* manager);
 using SortAreaFn = void(__fastcall*)(std::uint8_t* user, int area);
@@ -131,7 +131,7 @@ struct Snapshot {
 
 std::uint8_t* g_exe = nullptr;
 std::filesystem::path g_config_path;
-MainUpdateFn g_main_update = nullptr;
+HudUpdateFn g_hud_update = nullptr;
 UserAccessorFn g_user_accessor = nullptr;
 LocalPlayerFn g_local_player = nullptr;
 SortAreaFn g_prepare_sort = nullptr;
@@ -143,12 +143,13 @@ PouchItemFn g_pouch_item = nullptr;
 ClearBarFn g_clear_bar = nullptr;
 SetBarSlotFn g_set_bar_slot = nullptr;
 
-// Main update thread only.
+// Guarded by g_tick_lock: the HUD update is not guaranteed to stay on one thread.
+SRWLOCK g_tick_lock = SRWLOCK_INIT;
+bool g_reported_thread = false;
 bool g_sort_pouch = true;
 bool g_sort_bar = true;
 FILETIME g_config_time{};
 ULONGLONG g_next_config_check = 0;
-unsigned g_frame = 0;
 bool g_pending = true;
 Snapshot g_last{};
 bool g_have_last = false;
@@ -265,7 +266,7 @@ Bars ExpectedBars(std::uint8_t* user) {
     return bars;
 }
 
-// Runs under the character's lock on the main update thread, no pouch menu open.
+// Runs under the character's lock, from the item bar HUD update, no pouch menu open.
 void SortNow(std::uint8_t* user, const Snapshot& before) {
     if (g_sort_pouch && !PouchSorted(before)) {
         g_prepare_sort(user, kSortArea);
@@ -383,12 +384,17 @@ void Tick() {
     g_have_last = TakeSnapshot(user, g_last);
 }
 
-void* __fastcall MainUpdateDetour(void* self) {
-    void* result = g_main_update(self);
-    if (++g_frame % kTickFrames == 0) {
+void* __fastcall HudUpdateDetour(void* hud) {
+    // Before the original, which rebuilds the on-screen bar from the data sorted here.
+    if (TryAcquireSRWLockExclusive(&g_tick_lock)) {
+        if (!g_reported_thread) {
+            g_reported_thread = true;
+            SafeLog("Auto-sort: item bar HUD update reached on thread {}.", GetCurrentThreadId());
+        }
         Tick();
+        ReleaseSRWLockExclusive(&g_tick_lock);
     }
-    return result;
+    return g_hud_update(hud);
 }
 
 bool WriteDefaultConfig() {
@@ -414,13 +420,14 @@ bool Install(const std::filesystem::path& config_path) {
             return false;
         }
     }
-    auto* main_update = g_exe + kMainUpdateRva;
-    const bool main_update_hooked = mem::Read<std::uint8_t>(main_update) == std::uint8_t{0xE9};
-    if (!mem::Matches(main_update + kMainUpdateBodyOffset, kMainUpdateBody) ||
-        !(main_update_hooked || mem::Matches(main_update, kMainUpdatePrologue))) {
-        log::Write("Auto-sort: main update code does not match the known build; not installed.");
+    auto* hud_update = g_exe + kHudUpdateRva;
+    auto** slot = reinterpret_cast<void**>(g_exe + kHudUpdateSlotRva);
+    void* current = mem::Read<void*>(slot).value_or(nullptr);
+    if (current == nullptr) {
+        log::Write("Auto-sort: the item bar HUD update vtable slot is unreadable; not installed.");
         return false;
     }
+    const bool chained = current != hud_update;
     g_user_accessor = At<UserAccessorFn>(kUserAccessorRva);
     g_local_player = At<LocalPlayerFn>(kLocalPlayerRva);
     g_prepare_sort = At<SortAreaFn>(kPrepareSortRva);
@@ -446,18 +453,28 @@ bool Install(const std::filesystem::path& config_path) {
         MH_Uninitialize();
         return false;
     }
-    const MH_STATUS main_status = MH_CreateHook(main_update, reinterpret_cast<void*>(&MainUpdateDetour),
-                                                reinterpret_cast<void**>(&g_main_update));
-    const MH_STATUS enable_status = main_status == MH_OK ? MH_EnableHook(MH_ALL_HOOKS) : MH_UNKNOWN;
+    const MH_STATUS enable_status = MH_EnableHook(MH_ALL_HOOKS);
     if (enable_status != MH_OK) {
-        log::Log("Auto-sort: hooks failed (main update {}, enable {}); not installed.",
-                 MH_StatusToString(main_status), MH_StatusToString(enable_status));
+        log::Log("Auto-sort: GUI hooks failed ({}); not installed.", MH_StatusToString(enable_status));
         MH_Uninitialize();
         return false;
     }
-    log::Log("Auto-sort: installed (main update +0x{:X}{}, GUI open/close hooked); sorting waits while a "
-             "pouch, item box, shop, crafting or item bar menu is open.",
-             kMainUpdateRva, main_update_hooked ? " over an existing jump" : "");
+    // A vtable slot swap chains with code hooks in any order and with another slot hook installed
+    // before this one; a compare-exchange refuses one that changes the slot meanwhile.
+    g_hud_update = reinterpret_cast<HudUpdateFn>(current);
+    const auto patch = mem::ReplacePointer(slot, current, reinterpret_cast<void*>(&HudUpdateDetour));
+    if (!patch.installed) {
+        log::Write("Auto-sort: the item bar HUD update vtable slot changed while installing; not installed.");
+        MH_DisableHook(MH_ALL_HOOKS);
+        MH_Uninitialize();
+        return false;
+    }
+    if (!patch.protection_restored) {
+        log::Write("Auto-sort: the item bar HUD vtable page kept write access after the hook.");
+    }
+    log::Log("Auto-sort: installed (item bar HUD update slot +0x{:X}{}, GUI open/close hooked); sorting waits "
+             "while a pouch, item box, shop, crafting or item bar menu is open.",
+             kHudUpdateSlotRva, chained ? ", chained after another plugin's hook" : "");
     return true;
 }
 
