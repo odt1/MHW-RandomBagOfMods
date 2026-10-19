@@ -1,0 +1,40 @@
+# Status and next steps
+
+Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FINDINGS.md); architecture and build steps in [../DEVELOPMENT.md](../DEVELOPMENT.md).
+
+## Where things stand (2026-10-19 03:47)
+
+- Repository: `C:\Projects\MHW Mods\MHW-AutoAutoSort`, branch `main`, its own git repo, excluded from the parent FairTransmog repo through `C:\Projects\MHW Mods\.git\info\exclude`.
+- Deployed and not yet tested in game: commit `a282061`, `MHW-AutoAutoSort.dll` SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248` in `F:\SteamLibrary\steamapps\common\Monster Hunter World\nativePC\plugins`. The previous DLL is in `re/deployment-backups/20261019T034639372-…`.
+- This build moved the sort tick from sMhMain's update (contested by FairTransmog and MHW-DLSS4, see "Hook race" in FINDINGS) to the item bar HUD update `uGUIHudItemWindow` (`sub_141E2B890`, vtable slot `+0x3471E40`), swapped with a compare-exchange; it sorts before the HUD's own update runs. It also keeps the Palico gadget entry (843 for gadget 0) and the other game-added IDs at the end of the bar, and logs every changed pouch list slot by slot.
+- Confirmed by the user on the first build (sMhMain hook, while it won the race): pouch and bar stayed sorted while gathering, including with a full pouch.
+
+## Verify next (needs the user in game)
+
+1. The log `nativePC\plugins\MHW-AutoAutoSort.log` must show `Auto-sort: installed (item bar HUD update slot +0x3471E40…)` and, once in the world, `Auto-sort: item bar HUD update reached on thread N`. If the second line never appears, the HUD update is not reached through that slot and the tick never runs.
+2. Pick up a new item: one `Pouch sorted` line and at most one `Item bar set` line, no bursts. The new item should appear at its sorted place on the on-screen bar right away (the display-lag quirk should be gone, because the HUD's flag-driven rebuild now runs after the sort).
+3. The item bar selection should stay on the same item after a reorder.
+4. Open questions the log can answer: which thread runs the HUD update; whether sorting still happens when the HUD is hidden (HUD display options, cutscenes); FairTransmog's ini hot reload still works with both installed.
+
+## Reading the plugin's state in a running game
+
+Non-invasive (no breakpoints, threads resume on quit); the PDB sits next to the DLL:
+
+```powershell
+$p = (Get-Process MonsterHunterWorld).Id
+cdb -pv -p $p -y "F:\SteamLibrary\steamapps\common\Monster Hunter World\nativePC\plugins" -c 'x MHW_AutoAutoSort!*g_pending*; x MHW_AutoAutoSort!*g_have_last*; x MHW_AutoAutoSort!*g_last_close*; x MHW_AutoAutoSort!*g_reported_thread*; dq MonsterHunterWorld+0x3471e40 L1; q'
+```
+
+Avoid long Frida sessions with Interceptor hooks on the GUI open/close functions: detaching one crashed the game (FINDINGS, "Tooling incident"). Read-only Frida scripts without hooks detach cleanly.
+
+## Environment notes
+
+- Build: in pwsh, `. $PROFILE; devshell` first (the tool shell does not load the profile; `devshell` comes from it), then `cmake --build --preset release` and `ctest --preset test-release`. Deploy with `tools\deploy.ps1 -BuildDir build\release` only while the game is closed.
+- BN: `bnctl open "C:\Projects\MHW Mods\re\inputs\mhw-current\MonsterHunterWorld.exe.unpacked.exe"` resumes the shared database (FairTransmog's). The `binja-codemode-mcp` tools may not be connected in a new session; `tools/bn/run_hlil.sh RVA…` and `tools/bn/run_callers.sh RVA…` go through `bnctl exec` instead. `tools/bn/gmd.py` reads game text (`assets/chunk/common/text/item_eng.gmd`, name of item `id` at entry `2*id`) from the FairTransmog project's `assets`.
+- Live tests so far ran on the user's character in save slot 0 (hub and field). FairTransmog's convention of using the TEST character (slot 3) was not followed here; sorting only reorders the pouch and the bar.
+- Other plugins in the folder that hook the game: MHW-FairTransmog (code hook on sMhMain update `+0x1AF2B60`), MHW-DLSS4 0.9.4 (vtable slots of that update, TAA draw and mouse update), MonsterHunterFixorld, MHW-SteamOffline, BetterInputs, DPSTickFix, CutsceneSkip, QuestLoader, MonsterLoader, !CRCBypass.
+
+## Known issues and ideas
+
+- FairTransmog has the same latent race on `+0x1AF2B60` with any other plugin that code-hooks it at startup; with this plugin moved off it, the remaining risk there is other plugins. Worth fixing in FairTransmog the same way (vtable slot, chained).
+- Optional later: package with `tools\package.ps1` and write a Nexus description (FairTransmog has `README.nexus.bbcode` as a model).

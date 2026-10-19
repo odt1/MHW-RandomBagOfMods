@@ -44,6 +44,8 @@ Frida scripts used for the reverse engineering. Run with `frida -q -t <seconds> 
 | `gui_track.js`, `gui_open.js` | GUI construction, open and close with DTI class names |
 | `find_item_runs.js` | locates runs of item slot objects in the character data |
 
+Binary Ninja helpers (`tools/bn`, need BN open on the game database via `bnctl`): `run_hlil.sh RVA…` prints HLIL, `run_callers.sh RVA…` prints callers, `gmd.py FILE REGEX` searches game text files. Current state and next steps: [re/STATUS.md](re/STATUS.md).
+
 ## Source boundaries
 
 Native code in `src`, tools in `tools`, host tests in `tests`, evidence in `re`. The game executable, its unpacked copy and the BN database are local inputs kept in the FairTransmog project, not here.
