@@ -81,6 +81,8 @@ constexpr int kSortArea = 2;
 constexpr std::ptrdiff_t kItemBar = 0xEDF38;
 constexpr std::ptrdiff_t kAmmoBar = 0xEDFD8;
 constexpr std::size_t kBarLength = 40;
+// Both bars are read as one block.
+static_assert(kAmmoBar == kItemBar + kBarLength * sizeof(std::uint32_t));
 constexpr int kCurrentLoadout = -1;
 // Lists of the pouch item getter.
 constexpr std::uint32_t kListItems = 0;
@@ -89,6 +91,13 @@ constexpr std::uint32_t kListTools = 3;
 constexpr std::uint32_t kListMantles = 4;  // the two equipped specialized tools
 constexpr std::uint32_t kTypeAmmo = 1;
 constexpr std::uint32_t kTypeCoating = 4;
+
+// Entries the bar builders append after the pouch items by themselves: IDs 0x3ED, 0x6F6, 0x7AC,
+// and the Palico gadget's commands, three per gadget from the table at 0x143F964A0
+// (gadget g -> 843+2g, 844+2g, 1022+g, six gadgets).
+bool GameAddedEntry(std::uint32_t id) {
+    return id == 0x3ED || id == 0x6F6 || id == 0x7AC || (id >= 843 && id <= 854) || (id >= 1022 && id <= 1027);
+}
 
 constexpr unsigned kTickFrames = 6;
 constexpr ULONGLONG kConfigCheckMs = 1000;
@@ -292,16 +301,24 @@ void SortNow(std::uint8_t* user, const Snapshot& before) {
         pouch_order::BarStartsWith(ammo_bar, expected.ammo.View())) {
         return;
     }
+    // Keep the game's own entries after the pouch items, where its Sort by Item Pouch puts them,
+    // instead of dropping them until the game adds them back.
+    pouch_order::IdList<kBarLength> items = expected.items;
+    for (const std::uint32_t id : item_bar) {
+        if (GameAddedEntry(id)) {
+            items.Add(id);
+        }
+    }
     // The same calls the item bar editor makes when it saves (+0x10C4470).
     g_clear_bar(user, kCurrentLoadout);
-    for (std::uint32_t i = 0; i != expected.items.size; ++i) {
-        g_set_bar_slot(user, i, expected.items.ids[i], kCurrentLoadout);
+    for (std::uint32_t i = 0; i != items.size; ++i) {
+        g_set_bar_slot(user, i, items.ids[i], kCurrentLoadout);
     }
     for (std::uint32_t i = 0; i != expected.ammo.size; ++i) {
         g_set_bar_slot(user, i, expected.ammo.ids[i], kCurrentLoadout);
     }
     SafeLog("Item bar set to pouch order: items [{}] -> [{}], ammo [{}] -> [{}].", Join(item_bar),
-            Join(expected.items.View()), Join(ammo_bar), Join(expected.ammo.View()));
+            Join(items.View()), Join(ammo_bar), Join(expected.ammo.View()));
 }
 
 bool ReadFlag(const wchar_t* key) noexcept {
