@@ -4,7 +4,7 @@ Player documentation is in [README.md](README.md). Reverse-engineering evidence,
 
 ## How it works
 
-A Stracker's Loader plugin. `DllMain` starts a worker thread that opens the log, hashes the game executable on disk, and installs hooks only when the SHA-256 matches the one supported build (`src/runtime/profile.h`). The first 16 bytes of every called or hooked game function are compared with the known build first; any mismatch installs nothing. GUI hooks use MinHook; the HUD update is a vtable slot swap. All addresses are RVAs in the unpacked image of that build.
+A Stracker's Loader plugin. `DllMain` starts a worker thread that opens the log, hashes the game executable on disk, and installs hooks only when the SHA-256 matches the one supported build (`src/runtime/profile.h`). The first 16 bytes of every called or hooked game function are compared with the known build first; any mismatch installs nothing. GUI hooks use MinHook; the HUD update is a vtable slot swap (`mem::HookPointer`: compare-exchange, retried when another plugin changes the slot at the same moment, so both hooks chain). All addresses are RVAs in the unpacked image of that build.
 
 - `src/game/autosort.cpp` hooks the item bar HUD's per-frame update (`uGUIHudItemWindow`, RVA `0x1E2B890`) by swapping its vtable slot (RVA `0x3471E40`) and calling whatever the slot held. It does not patch sMhMain's update: FairTransmog code-hooks it and MHW-DLSS4 swaps its slot, and two code hooks installed at the same moment can bypass each other. Before each HUD update, with a hunter in the world and no pouch menu open, it snapshots the pouch block (`user+0x38080`–`+0x38550`) and both item bar orders (`user+0xEDF38`, `+0xEDFD8`). When the snapshot changed, under the character lock (`user+8`):
   - if any pouch list is out of the game's sort-key order, it calls Auto-sort's prepare `sub_14135D610(user, 2)` and apply `sub_14134AB90(user, 2)`, the calls the Item Pouch menu makes;
@@ -31,6 +31,7 @@ ctest --preset test-release
 
 - `tools/deploy.ps1` refuses while the game runs, backs up the installed DLL and PDB into `re/deployment-backups/`, copies and verifies the new ones.
 - `tools/package.ps1` builds `dist/MHW-AutoAutoSort-<version>-beta.zip` (DLL in `nativePC\plugins`, README, notices).
+- `README.nexus.bbcode` is the Nexus Mods description; keep it in step with `README.md`.
 
 ## Live tools (`tools/live`)
 

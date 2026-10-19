@@ -70,12 +70,14 @@ struct PouchList {
     std::ptrdiff_t offset;
     std::size_t slots;
 };
+constexpr std::size_t kMaxListSlots = 24;
 constexpr std::array<PouchList, 4> kPouchLists{{
     {0x38080, 24},  // items (list 0)
     {0x38200, 16},  // ammo and coatings (list 1)
-    {0x38380, 24},
+    {0x38380, 24},  // materials gathered in the field (list 2)
     {0x38500, 5},   // fixed tools: whetstone, capture net, fishing rod, BBQ spit (list 3)
 }};
+constexpr std::array<const char*, 4> kPouchListNames{"items", "ammo", "materials", "tools"};
 constexpr std::ptrdiff_t kPouchEnd = 0x38550;
 constexpr int kSortArea = 2;
 // Item bar order: 40 item IDs, then 40 ammo IDs, for the current (not a loadout's) bar.
@@ -193,8 +195,6 @@ std::string JoinSlots(std::span<const std::uint32_t> ids) {
     return text;
 }
 
-constexpr std::array<const char*, 4> kPouchListNames{"items", "ammo", "list 2", "tools"};
-
 bool TakeSnapshot(std::uint8_t* user, Snapshot& snapshot) noexcept {
     return mem::Read(user + kPouchBegin, snapshot.pouch.data(), snapshot.pouch.size()) &&
            mem::Read(user + kItemBar, snapshot.bars.data(), snapshot.bars.size() * sizeof(std::uint32_t));
@@ -206,8 +206,8 @@ std::uint32_t SlotItem(const Snapshot& snapshot, std::ptrdiff_t list_offset, std
     return id;
 }
 
-std::array<std::uint32_t, 24> ListItems(const Snapshot& snapshot, const PouchList& list) noexcept {
-    std::array<std::uint32_t, 24> ids{};
+std::array<std::uint32_t, kMaxListSlots> ListItems(const Snapshot& snapshot, const PouchList& list) noexcept {
+    std::array<std::uint32_t, kMaxListSlots> ids{};
     for (std::size_t i = 0; i != list.slots; ++i) {
         ids[i] = SlotItem(snapshot, list.offset, i);
     }
@@ -380,8 +380,9 @@ void Tick() {
     } catch (...) {
         SafeLog("Sort pass failed with an exception; continuing.");
     }
-    LeaveCriticalSection(lock);
+    // Still under the lock, so a change the game makes right after this pass is not taken as seen.
     g_have_last = TakeSnapshot(user, g_last);
+    LeaveCriticalSection(lock);
 }
 
 void* __fastcall HudUpdateDetour(void* hud) {
@@ -389,7 +390,7 @@ void* __fastcall HudUpdateDetour(void* hud) {
     if (TryAcquireSRWLockExclusive(&g_tick_lock)) {
         if (!g_reported_thread) {
             g_reported_thread = true;
-            SafeLog("Auto-sort: item bar HUD update reached on thread {}.", GetCurrentThreadId());
+            SafeLog("Auto-sort: active (first item bar HUD update on thread {}).", GetCurrentThreadId());
         }
         Tick();
         ReleaseSRWLockExclusive(&g_tick_lock);
@@ -420,14 +421,6 @@ bool Install(const std::filesystem::path& config_path) {
             return false;
         }
     }
-    auto* hud_update = g_exe + kHudUpdateRva;
-    auto** slot = reinterpret_cast<void**>(g_exe + kHudUpdateSlotRva);
-    void* current = mem::Read<void*>(slot).value_or(nullptr);
-    if (current == nullptr) {
-        log::Write("Auto-sort: the item bar HUD update vtable slot is unreadable; not installed.");
-        return false;
-    }
-    const bool chained = current != hud_update;
     g_user_accessor = At<UserAccessorFn>(kUserAccessorRva);
     g_local_player = At<LocalPlayerFn>(kLocalPlayerRva);
     g_prepare_sort = At<SortAreaFn>(kPrepareSortRva);
@@ -459,12 +452,14 @@ bool Install(const std::filesystem::path& config_path) {
         MH_Uninitialize();
         return false;
     }
-    // A vtable slot swap chains with code hooks in any order and with another slot hook installed
-    // before this one; a compare-exchange refuses one that changes the slot meanwhile.
-    g_hud_update = reinterpret_cast<HudUpdateFn>(current);
-    const auto patch = mem::ReplacePointer(slot, current, reinterpret_cast<void*>(&HudUpdateDetour));
+    // A vtable slot swap chains with code hooks in any order and with other slot hooks, including
+    // one installed at the same moment. The detour can run as soon as the slot points at it, so the
+    // function it calls is stored first.
+    const auto patch = mem::HookPointer(reinterpret_cast<void**>(g_exe + kHudUpdateSlotRva),
+                                        reinterpret_cast<void*>(&HudUpdateDetour),
+                                        reinterpret_cast<void**>(&g_hud_update));
     if (!patch.installed) {
-        log::Write("Auto-sort: the item bar HUD update vtable slot changed while installing; not installed.");
+        log::Write("Auto-sort: could not hook the item bar HUD update vtable slot; not installed.");
         MH_DisableHook(MH_ALL_HOOKS);
         MH_Uninitialize();
         return false;
@@ -472,6 +467,7 @@ bool Install(const std::filesystem::path& config_path) {
     if (!patch.protection_restored) {
         log::Write("Auto-sort: the item bar HUD vtable page kept write access after the hook.");
     }
+    const bool chained = reinterpret_cast<std::uint8_t*>(g_hud_update) != g_exe + kHudUpdateRva;
     log::Log("Auto-sort: installed (item bar HUD update slot +0x{:X}{}, GUI open/close hooked); sorting waits "
              "while a pouch, item box, shop, crafting or item bar menu is open.",
              kHudUpdateSlotRva, chained ? ", chained after another plugin's hook" : "");

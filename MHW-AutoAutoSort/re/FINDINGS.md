@@ -47,7 +47,7 @@ Deployed `MHW-AutoAutoSort.dll` 0.1.0-beta next to FairTransmog and other plugin
 - **Observed, log:** the item bar held a special entry 843 after the pouch-derived entries (`item_eng.gmd` has no name for it, "Invalid Message"). The rewrite drops it; later lines show it back at the end of the bar. **Inferred:** the game appends it again by itself; one extra bar rewrite per pouch change, no loop.
 - **Observed, static table `0x143F964A0` read in BN (indexed by `sub_14198DA60(gadget, i)`, which the bar builder calls with `*(user+0x2D4)` for `i < 3`):** gadget `g` maps to item IDs `843+2g`, `844+2g`, `1022+g` for `g` 0–5. **Observed, live:** `user+0x2D4` read 0 and the item bar ended with 843. **Inferred:** 843 is the equipped Palico gadget's entry, not an empty separator (the user's first guess). Since this finding the rewrite keeps such entries (IDs `0x3ED`, `0x6F6`, `0x7AC`, 843–854, 1022–1027) at the end of the bar instead of dropping them.
 - **Observed, log:** several "Pouch sorted" lines showed the same item order before and after. That log printed only filled item slots. **Inferred:** those sorts closed a gap left by a used-up item, or reordered the ammo or tool list. Later builds log every changed list slot by slot, `_` for an empty slot.
-- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (user reported no problem, not asked specifically).
+- **Observed, user (HUD update build, 2026-10-19):** the item bar selection stayed on its item through reorders during gameplay.
 
 ## Item bar rewrite fight and HUD refresh (2026-10-19, 0.1.0 build)
 
@@ -71,12 +71,17 @@ Deployed `MHW-AutoAutoSort.dll` 0.1.0-beta next to FairTransmog and other plugin
 Build: commit `a282061`, DLL SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248`, with FairTransmog 0.9.0 and MHW-DLSS4 0.9.4 installed.
 
 - **Observed, plugin log:** install line at 08:57:10.594; `item bar HUD update reached on thread 38104` at 08:59:12, once in the world. 21 sort passes followed over 9 minutes, each a single `Pouch sorted` line with at most one `Item bar set` line; no bursts of rewrites.
-- **Observed, plugin log:** passes were logged on threads 38104 (most), 38888, 38892, 38876, 3812, 38896 and 38884. **Inferred:** the game runs the HUD update on its job worker threads, not on one fixed thread. The plugin's try-lock (`g_tick_lock`) keeps passes from overlapping, and every pass holds the character lock (`user+8`). No crash or corruption was seen.
+- **Observed, plugin log:** passes were logged on threads 38104 (most), 38888, 38892, 38876, 3812, 38896 and 38884. **Observed, FairTransmog log:** its ini reloads at 09:12:36 and 09:12:43 ran on thread 38104, from its tick on sMhMain's update, so 38104 is the game's main thread. **Inferred:** the game runs the HUD update mostly on the main thread and sometimes on its job worker threads. The plugin's try-lock (`g_tick_lock`) keeps passes from overlapping, and every pass holds the character lock (`user+8`). No crash or corruption was seen.
 - **Observed, plugin log:** the game placed new entries at the front or second place of the bar (Mega Potion at 09:05:03 `[2,1,7,…]`, Wyvern Ammo at 09:03:03 `[138,167,140,…]`) or at the end (Might Seed, Nulberry, Lifepowder); each was rewritten once into pouch order, and the Palico gadget entry 843 stayed at the end with no fight.
 - **Observed, plugin log 09:08:11:** after First-aid Med and EZ Ration were used up the items list had two gaps (`…,102,_,_,174`) and was closed up to `…,102,174`; the bar needed no rewrite.
 - **Observed, plugin log:** item list order puts Empty Phial (174) after EZ Ration (183), and First-aid Med (181) after Gunpowder Level 2 (102): the game's sort key, not the item ID, decides the order.
-- **Observed, user:** "seems to work proper". **Unknown:** whether the HUD selection stayed on its item through every reorder, and behaviour with the HUD hidden; the user reported no problem with either.
-- **Observed, FairTransmog log:** FairTransmog installed its main update and refresh hooks at 08:57:10.595 with this plugin no longer patching the main update. Its ini hot reload was not exercised in this session.
+- **Observed, user:** "seems to work proper"; later, the item bar selection stayed on its item during gameplay "as far as I can tell". Behaviour with the HUD hidden was not tested (the user called it an edge case).
+- **Observed, FairTransmog log and user:** FairTransmog installed its main update and refresh hooks at 08:57:10.595 with this plugin no longer patching the main update, and its ini hot reload worked (09:12:36 `All=300`, 09:12:43 back to `-1`, each followed by a refresh override).
+
+## Review changes for 0.9.0 (2026-10-19)
+
+- The snapshot that marks a pouch state as handled is now taken before the character lock is released. Before, a pouch change the game made between the end of a sort pass and that snapshot was recorded as handled and stayed unsorted until the next change (inferred from the code; not observed live).
+- The HUD slot hook goes through `mem::HookPointer`, which stores the original before the swap and retries the compare-exchange when another plugin changes the slot at the same moment. FairTransmog 0.9.2 moved its own per-frame tick off sMhMain's update the same way, to sTicketManager's update (slot `0x143404AB0`, see its `re/PROTOTYPE_MILESTONE.md`), so the two plugins no longer patch any function in common.
 
 ## Tooling incident
 
@@ -84,6 +89,5 @@ Build: commit `a282061`, DLL SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476
 
 ## Open questions
 
-- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (no problem reported in the HUD update build).
 - **Unknown:** whether the HUD update, and so sorting, keeps running while the HUD is hidden (HUD display options, cutscenes).
 - **Unknown:** multiplayer behaviour; master-rank or story states where `sub_141895E80` filters differently.

@@ -1,0 +1,53 @@
+Keeps your item pouch and item bar sorted all the time, without pressing a button.
+
+The game can sort both, but only when you ask: [b]Auto-sort[/b] in the Item Pouch, and [b]Sort by Item Pouch[/b] in the item bar editor. This plugin runs those same two game functions for you every time the pouch changes: an item you gather, carve or pick up, something you craft or auto-craft, items you take from the item box, buy, or load from an item loadout.
+
+[size=5][b]Features[/b][/size]
+[list]
+[*]The pouch (items, ammo and coatings, materials) stays in the game's own Auto-sort order.
+[*]The item bar stays in pouch order, exactly as Sort by Item Pouch leaves it. A new item shows up at its sorted place right away and the selected item stays selected. Items you hid from the item bar stay hidden, and the Palico gadget entry stays at the end.
+[*]Nothing moves under your cursor: sorting waits while a menu that shows your pouch is open (Item Pouch, item box, item loadouts, shop, crafting list, item bar editor) and happens right after you close it.
+[*]Only the game's own sorting is used. Items are never added, removed or moved between the pouch and the item box.
+[/list]
+
+[size=5][b]Settings[/b][/size]
+[font=Courier New]MHW-AutoAutoSort.ini[/font] is created next to the plugin on first launch:
+[code]
+[AutoSort]
+Pouch=1
+ItemBar=1
+[/code]
+[list]
+[*][font=Courier New]Pouch=0[/font] stops sorting the pouch. [font=Courier New]ItemBar=0[/font] stops reordering the item bar, so you can keep your own arrangement.
+[*]Changes apply within about a second while the game runs; no restart needed.
+[/list]
+
+[size=5][b]Requirements[/b][/size]
+[list]
+[*]Monster Hunter: World: Iceborne on PC, the final Steam version (15.23). The plugin checks the game executable when it starts and does nothing on any other version.
+[*][url=https://www.nexusmods.com/monsterhunterworld/mods/1982]Stracker's Loader[/url].
+[*]Tested with Stracker's Loader together with MHW FairTransmog, MHW-DLSS4 and a CRC-bypass plugin ([font=Courier New]!CRCBypass.dll[/font]). Other setups are untested.
+[/list]
+
+[size=5][b]Installation[/b][/size]
+[list=1]
+[*]Back up your save (Steam: [font=Courier New]<Steam>\userdata\<your id>\582010\remote[/font]).
+[*]Copy [font=Courier New]nativePC\plugins\MHW-AutoAutoSort.dll[/font] into the game's [font=Courier New]nativePC\plugins[/font] folder.
+[*]Start the game. The plugin creates [font=Courier New]MHW-AutoAutoSort.ini[/font] and [font=Courier New]MHW-AutoAutoSort.log[/font] next to itself.
+[/list]
+
+[size=5][b]Uninstalling[/b][/size]
+Delete [font=Courier New]MHW-AutoAutoSort.dll[/font], [font=Courier New].ini[/font] and [font=Courier New].log[/font] from [font=Courier New]nativePC\plugins[/font]. The pouch and item bar stay as they were last sorted.
+
+[size=5][b]Known limitations[/b][/size]
+[list]
+[*]This is a beta, tested offline on a single character. Multiplayer is untested.
+[*]A manual item bar arrangement is replaced by pouch order the next time the pouch or the bar changes. Set [font=Courier New]ItemBar=0[/font] to keep your own order. Item bars saved in item loadouts are not changed.
+[*]Sorting runs along with the on-screen item bar, so while the HUD is hidden it may wait until the HUD shows again.
+[/list]
+
+[size=5][b]Reporting problems[/b][/size]
+Include [font=Courier New]nativePC\plugins\MHW-AutoAutoSort.log[/font]. It is rewritten on every launch, so copy it right after the problem happens.
+
+[size=5][b]Credits[/b][/size]
+Built with [url=https://github.com/TsudaKageyu/minhook]MinHook[/url].
