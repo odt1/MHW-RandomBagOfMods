@@ -48,6 +48,15 @@ Deployed `MHW-AutoAutoSort.dll` 0.1.0-beta next to FairTransmog and other plugin
 - **Observed, log:** several "Pouch sorted" lines showed the same item order before and after. That log printed only filled item slots. **Inferred:** those sorts closed a gap left by a used-up item, or reordered the ammo or tool list. Later builds log every changed list slot by slot, `_` for an empty slot.
 - **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (user reported no problem, not asked specifically).
 
+## Item bar rewrite fight and HUD refresh (2026-10-19, 0.1.0 build)
+
+- **Observed, plugin log 03:00:08–03:01:22:** after Adamant Seed (item 24) was picked up, the pouch was sorted and the bar rewritten to `[1,2,5,7,24,59,…,114,130]` (843 dropped). 3 s later the bar read `[1,2,5,7,24,843,59,…]`, with 843 re-inserted right after 24, not at the end; the plugin rewrote it again. 138 rewrites in two bursts (03:00:11–03:00:28, 03:01:15–03:01:22) while the user scrolled the item bar.
+- **Inferred:** the game re-adds the gadget entry at its remembered position (the predecessor link table at `user+0xEE078`, which records 843's previous entry, 24 at that time). Dropping it therefore caused a write fight. The build that keeps game-added entries at the end of the bar removes the cause; not yet tested live.
+- **Observed, user:** the new item first showed after Glider Mantle (end of the on-screen bar) and moved to its sorted place as soon as the user scrolled to it.
+- **Observed, HLIL, `uGUIHudItemWindow` (DTI `0x14502A630`, size `0x7630`):** `sub_141E2DE70` builds the on-screen item list from the bar order and the pouch, `sub_141E2EE10` the ammo list. The per-frame update `sub_141E2B890` calls `sub_141E297E0` (rebuild items, then restore the selection by matching the previously selected entry's type and ID) when bit 1 of `*(hud+0x4548)+0x1261C` is set; `hud+0x4548` is the local player (it also reads the player's `+0x76B0`). A full rebuild `sub_141E280B0`, queued by `sub_140246C40(sMhGUI, 0)` at spawn, resets the selection.
+- **Inferred:** the on-screen bar is rebuilt only when that player flag is set (by the game's own pouch changes) or when the user scrolls; the plugin's reorder sets neither, so the display lags until the next scroll. The selection follows the item, not its position, on the flag-driven rebuild.
+- **Unknown:** which code sets and clears bit 1 of `player+0x1261C`, and whether setting it from the plugin is free of side effects.
+
 ## Tooling incident
 
 - **Observed, 2026-10-19 02:21:46:** the game crashed (`frida-agent.dll`, exception `0xC0000409`) when a Frida session with hooks on `sub_141FB79B0` and `sub_141FB55E0` reached its `-t 300` timeout and detached. Earlier sessions with other hooks detached cleanly. **Inferred:** detaching Frida from these hooks is unsafe; the plugin itself does not use Frida.
