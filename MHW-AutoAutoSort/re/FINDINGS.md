@@ -83,6 +83,14 @@ Build: commit `a282061`, DLL SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476
 - The snapshot that marks a pouch state as handled is now taken before the character lock is released. Before, a pouch change the game made between the end of a sort pass and that snapshot was recorded as handled and stayed unsorted until the next change (inferred from the code; not observed live).
 - The HUD slot hook goes through `mem::HookPointer`, which stores the original before the swap and retries the compare-exchange when another plugin changes the slot at the same moment. FairTransmog 0.9.2 moved its own per-frame tick off sMhMain's update the same way, to sTicketManager's update (slot `0x143404AB0`, see its `re/PROTOTYPE_MILESTONE.md`), so the two plugins no longer patch any function in common.
 
+## Live result, 0.9.0 with FairTransmog 0.9.2 (2026-10-19 09:43 session)
+
+Builds: Auto-Auto-Sort 0.9.0 (commit `ab21471`, DLL SHA-256 `3B704AB5715A9AE57D3E0B93FDFA2BFF1FA518D518389D0E0697303E53DF0D4C`), FairTransmog 0.9.2 (DLL SHA-256 `F19F726CFF22F8E93311E4FEAA0EEFCDAC0C9F9E9FDBDE1C49464E2BAE8C2EE7`), MHW-DLSS4 0.9.4.
+
+- **Observed, logs:** at 09:43:39 MHW-DLSS4 hooked its three slots as before, including sMhMain's update slot `+0x33fa9e8`. At 09:43:40 this plugin installed on the HUD slot and FairTransmog on the sTicketManager slot `+0x3404AB0`, neither logging "chained", so no other plugin had swapped either slot.
+- **Observed, logs:** FairTransmog's ini reloads (10:06:27 `All=300`, 10:06:30 back to `-1`, each with its refresh override) and this plugin's first HUD update (10:07:38) ran on the same thread, 35648. **Inferred:** that is the main thread, and the HUD update runs there.
+- **Observed, plugin log and user ("works"):** pouch changes were sorted (for example `[33,1,32,9,5] -> [1,5,9,32,33]`) and the item bar was set to pouch order once per change.
+
 ## Tooling incident
 
 - **Observed, 2026-10-19 02:21:46:** the game crashed (`frida-agent.dll`, exception `0xC0000409`) when a Frida session with hooks on `sub_141FB79B0` and `sub_141FB55E0` reached its `-t 300` timeout and detached. Earlier sessions with other hooks detached cleanly. **Inferred:** detaching Frida from these hooks is unsafe; the plugin itself does not use Frida.

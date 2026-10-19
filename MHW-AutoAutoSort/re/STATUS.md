@@ -6,10 +6,12 @@ Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FIND
 
 - Repository: `C:\Projects\MHW Mods\MHW-AutoAutoSort`, branch `main`, its own git repo, excluded from the parent FairTransmog repo through `C:\Projects\MHW Mods\.git\info\exclude`.
 - Deployed and confirmed in game: commit `a282061` (0.1.0), DLL SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248`. The user confirmed sorting, the item bar selection staying on its item, and FairTransmog's hot reload alongside it (FINDINGS, "Live result, HUD update build").
-- Deployed 2026-10-19 09:33, not yet tested in game: 0.9.0, `dist/MHW-AutoAutoSort-0.9.0-beta.zip` (SHA-256 `547A04853650BDCB999698DC6CBD74375E74432B1AB7608780F89E7EA9DE9DFC`), DLL SHA-256 `3B704AB5715A9AE57D3E0B93FDFA2BFF1FA518D518389D0E0697303E53DF0D4C`. Review changes: handled-state snapshot taken under the character lock, `mem::HookPointer` for the slot hook, materials list named, player README and `README.nexus.bbcode` in FairTransmog's style.
-- FairTransmog 0.9.2 (parent repo) built and packaged with the same slot-hook fix: its tick moved from sMhMain's update to sTicketManager's update (slot `+0x3404AB0`); `dist/MHW-FairTransmog-0.9.2-beta.zip`, DLL SHA-256 `F19F726CFF22F8E93311E4FEAA0EEFCDAC0C9F9E9FDBDE1C49464E2BAE8C2EE7`, deployed 09:33, not yet tested in game.
+- Deployed 2026-10-19 09:33 and confirmed in game (09:43 session): 0.9.0, `dist/MHW-AutoAutoSort-0.9.0-beta.zip` (SHA-256 `547A04853650BDCB999698DC6CBD74375E74432B1AB7608780F89E7EA9DE9DFC`), DLL SHA-256 `3B704AB5715A9AE57D3E0B93FDFA2BFF1FA518D518389D0E0697303E53DF0D4C`. Review changes: handled-state snapshot taken under the character lock, `mem::HookPointer` for the slot hook, materials list named, player README and `README.nexus.bbcode` in FairTransmog's style.
+- FairTransmog 0.9.2 (parent repo) built and packaged with the same slot-hook fix: its tick moved from sMhMain's update to sTicketManager's update (slot `+0x3404AB0`); `dist/MHW-FairTransmog-0.9.2-beta.zip`, DLL SHA-256 `F19F726CFF22F8E93311E4FEAA0EEFCDAC0C9F9E9FDBDE1C49464E2BAE8C2EE7`, deployed 09:33 and confirmed in game (frame tick on the main thread, ini hot reload).
 
-## Verify next (needs the user in game)
+## Verified, and what is left
+
+Done 2026-10-19 09:43 session (FINDINGS, "Live result, 0.9.0 with FairTransmog 0.9.2"):
 
 1. Auto-Auto-Sort log: `Auto-sort: installed (item bar HUD update slot +0x3471E40, …)`, then `Auto-sort: active (first item bar HUD update on thread N)` once in the world; pickups sort as before.
 2. FairTransmog log: `Transmog: direct override hooks installed (frame tick slot +0x3404AB0, refresh +0x2041700)`; an ini edit (for example `All=300`, then `-1`) logs `Config:` and a refresh override within a second, on the main thread.
@@ -35,4 +37,4 @@ Avoid long Frida sessions with Interceptor hooks on the GUI open/close functions
 
 ## Known issues and ideas
 
-- After the live check: publish both zips; the Nexus description is `README.nexus.bbcode` (no banner image yet).
+- Ready to publish both zips; the Nexus description is `README.nexus.bbcode` (no banner image yet).
