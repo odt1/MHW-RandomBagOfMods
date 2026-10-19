@@ -5,8 +5,7 @@ Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FIND
 ## Where things stand (2026-10-19 09:10)
 
 - Repository: `C:\Projects\MHW Mods\MHW-AutoAutoSort`, branch `main`, its own git repo, excluded from the parent FairTransmog repo through `C:\Projects\MHW Mods\.git\info\exclude`.
-- Deployed and confirmed working in game: commit `a282061`, `MHW-AutoAutoSort.dll` SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248` in `F:\SteamLibrary\steamapps\common\Monster Hunter World
-ativePC\plugins`. The previous DLL is in `re/deployment-backups/20261019T034639372-…`.
+- Deployed and confirmed working in game: commit `a282061`, `MHW-AutoAutoSort.dll` SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248` in `F:\SteamLibrary\steamapps\common\Monster Hunter World\nativePC\plugins`. The previous DLL is in `re/deployment-backups/20261019T034639372-…`.
 - This build runs the sort tick from the item bar HUD update `uGUIHudItemWindow` (`sub_141E2B890`, vtable slot `+0x3471E40`, swapped with a compare-exchange), not from sMhMain's update, which FairTransmog and MHW-DLSS4 contest. It keeps the Palico gadget entry (843 for gadget 0) and the other game-added IDs at the end of the bar, and logs every changed pouch list slot by slot.
 - 08:57–09:08 session (FINDINGS, "Live result, HUD update build"): the HUD hook ran, 21 sort passes with no rewrite bursts, new items and ammo moved to their sorted place, used-up slots closed up, the gadget entry stayed at the end. The HUD update runs on several job threads; passes are serialized by the plugin's try-lock and the character lock. The user: "seems to work proper".
 
