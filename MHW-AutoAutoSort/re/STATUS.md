@@ -2,19 +2,20 @@
 
 Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FINDINGS.md); architecture and build steps in [../DEVELOPMENT.md](../DEVELOPMENT.md).
 
-## Where things stand (2026-10-19 03:47)
+## Where things stand (2026-10-19 09:10)
 
 - Repository: `C:\Projects\MHW Mods\MHW-AutoAutoSort`, branch `main`, its own git repo, excluded from the parent FairTransmog repo through `C:\Projects\MHW Mods\.git\info\exclude`.
-- Deployed and not yet tested in game: commit `a282061`, `MHW-AutoAutoSort.dll` SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248` in `F:\SteamLibrary\steamapps\common\Monster Hunter World\nativePC\plugins`. The previous DLL is in `re/deployment-backups/20261019T034639372-…`.
-- This build moved the sort tick from sMhMain's update (contested by FairTransmog and MHW-DLSS4, see "Hook race" in FINDINGS) to the item bar HUD update `uGUIHudItemWindow` (`sub_141E2B890`, vtable slot `+0x3471E40`), swapped with a compare-exchange; it sorts before the HUD's own update runs. It also keeps the Palico gadget entry (843 for gadget 0) and the other game-added IDs at the end of the bar, and logs every changed pouch list slot by slot.
-- Confirmed by the user on the first build (sMhMain hook, while it won the race): pouch and bar stayed sorted while gathering, including with a full pouch.
+- Deployed and confirmed working in game: commit `a282061`, `MHW-AutoAutoSort.dll` SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248` in `F:\SteamLibrary\steamapps\common\Monster Hunter World
+ativePC\plugins`. The previous DLL is in `re/deployment-backups/20261019T034639372-…`.
+- This build runs the sort tick from the item bar HUD update `uGUIHudItemWindow` (`sub_141E2B890`, vtable slot `+0x3471E40`, swapped with a compare-exchange), not from sMhMain's update, which FairTransmog and MHW-DLSS4 contest. It keeps the Palico gadget entry (843 for gadget 0) and the other game-added IDs at the end of the bar, and logs every changed pouch list slot by slot.
+- 08:57–09:08 session (FINDINGS, "Live result, HUD update build"): the HUD hook ran, 21 sort passes with no rewrite bursts, new items and ammo moved to their sorted place, used-up slots closed up, the gadget entry stayed at the end. The HUD update runs on several job threads; passes are serialized by the plugin's try-lock and the character lock. The user: "seems to work proper".
 
-## Verify next (needs the user in game)
+## Still open (low priority, needs the user in game)
 
-1. The log `nativePC\plugins\MHW-AutoAutoSort.log` must show `Auto-sort: installed (item bar HUD update slot +0x3471E40…)` and, once in the world, `Auto-sort: item bar HUD update reached on thread N`. If the second line never appears, the HUD update is not reached through that slot and the tick never runs.
-2. Pick up a new item: one `Pouch sorted` line and at most one `Item bar set` line, no bursts. The new item should appear at its sorted place on the on-screen bar right away (the display-lag quirk should be gone, because the HUD's flag-driven rebuild now runs after the sort).
-3. The item bar selection should stay on the same item after a reorder.
-4. Open questions the log can answer: which thread runs the HUD update; whether sorting still happens when the HUD is hidden (HUD display options, cutscenes); FairTransmog's ini hot reload still works with both installed.
+1. Whether the item bar selection always stays on its item after a reorder (no problem reported).
+2. Whether sorting continues while the HUD is hidden (HUD display options, cutscenes).
+3. FairTransmog's ini hot reload with both plugins installed (not exercised).
+4. Multiplayer sessions.
 
 ## Reading the plugin's state in a running game
 
@@ -37,4 +38,4 @@ Avoid long Frida sessions with Interceptor hooks on the GUI open/close functions
 ## Known issues and ideas
 
 - FairTransmog has the same latent race on `+0x1AF2B60` with any other plugin that code-hooks it at startup; with this plugin moved off it, the remaining risk there is other plugins. Worth fixing in FairTransmog the same way (vtable slot, chained).
-- Optional later: package with `tools\package.ps1` and write a Nexus description (FairTransmog has `README.nexus.bbcode` as a model).
+- Next candidates: package with `tools\package.ps1` and write a Nexus description (FairTransmog has `README.nexus.bbcode` as a model); fix FairTransmog's main update hook the same way.

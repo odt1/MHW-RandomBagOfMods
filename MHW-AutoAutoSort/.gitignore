@@ -8,3 +8,6 @@ re/deployment-backups/
 
 # Local tool settings
 .claude/
+
+# Python bytecode
+__pycache__/

@@ -7,7 +7,8 @@ Every claim is marked **observed** (seen in disassembly, decompiled code, memory
 - **Observed, HLIL `sub_141B8DBB0` (RVA `0x1B8DBB0`):** returns `*(singleton+0xA8) + *(s32*)(singleton+0xA0) * 0x26CC00` for `singleton = *(exe+0x5013950)`. This is the character data block ("user") the FairTransmog project already uses.
 - **Observed, live:** item slot objects in the user block are 16 bytes: vtable RVA `0x2F206B0`, `+0x8` u32 item ID, `+0xC` u32 count. A run of 77 such objects starts at `user+0x38080`; another of 2,150 starts at `user+0x38A08` (item box).
 - **Observed, HLIL `sub_141355970` (RVA `0x1355970`, item ID getter `(user, list, index)`):** list 0 reads `user+0x38088+i*0x10` (items), 1 `+0x38208` (ammo and coatings), 2 `+0x38388`, 3 `+0x38508`, 4 the two equipped specialized tools (`sub_141672A50` of `user+0xC4+i*4`, or an equipment-box entry when `user+0x2691A0` is set).
-- **Observed, live:** list 0 held Potion, Antidote, Ration, Raw Meat, Empty Phial (IDs 1, 5, 9, 65, 174); list 1 eleven ammo IDs; list 3 Whetstone, Capture Net, Fishing Rod, BBQ Spit (IDs 114–117; names from `item_eng.gmd`, name index `2*id`). List 2 (24 slots at `+0x38380`) was empty. **Unknown:** what list 2 holds.
+- **Observed, live:** list 0 held Potion, Antidote, Ration, Raw Meat, Empty Phial (IDs 1, 5, 9, 65, 174); list 1 eleven ammo IDs; list 3 Whetstone, Capture Net, Fishing Rod, BBQ Spit (IDs 114–117; names from `item_eng.gmd`, name index `2*id`). List 2 (24 slots at `+0x38380`) was empty then.
+- **Observed, live log 2026-10-19 09:06:06:** list 2 held Iron Ore, Machalite Ore, Earth Crystal, Monster Bone S, Gajau Skin, Kestodon Shell (IDs 205, 206, 210, 236, 276, 284). **Inferred:** list 2 is the pouch's materials section (materials gathered in the field).
 
 ## Auto-sort (pouch)
 
@@ -63,7 +64,19 @@ Deployed `MHW-AutoAutoSort.dll` 0.1.0-beta next to FairTransmog and other plugin
 - **Observed, `cdb -pv` (non-invasive) on the running game:** the plugin's frame counter `g_frame` was 0 and its MinHook trampoline held the original prologue (`push rbx; sub rsp,0x80; jmp back`). The main update entry `+0x1AF2B60` jumped to another relay. FairTransmog 0.9.0 and Auto-Auto-Sort both started at 03:29:09.364 on their own threads, both read the unhooked prologue, and FairTransmog wrote its jump at .494 after this plugin's at .489.
 - **Inferred:** two MinHook instances in different DLLs patching the same entry concurrently each copy the original bytes; the later write bypasses the earlier hook. In the first session the order was reversed, so FairTransmog's main update hook was the bypassed one then.
 - **Observed, HLIL and `cdb`:** the main update's only reference is the `.rdata` slot `0x1433FA9E8`, called as `call [rax+0x30]` at `+0x22E4BEF`. Live, that slot held `MHW_DLSS4.dll+0x221B0`: MHW-DLSS4 0.9.4 hooks it by finding the slot that holds the function and writing its own pointer (log line at 03:29:08.761, before the Stracker plugins). A plugin that swapped the slot first would make DLSS4's search fail.
-- **Change:** the tick moved off the contested main update to the item bar HUD's own update, `uGUIHudItemWindow` vtable `0x143471BE0` index 76 (`sub_141E2B890`, slot `0x143471E40`, its only reference; live it held the game function, page `PAGE_READONLY`). The plugin swaps that slot with a compare-exchange and calls whatever it held, so it chains with code hooks and earlier slot hooks. The tick runs before the original on every call, so the HUD's flag-driven rebuild sees the sorted pouch and bar. **Unknown until tested:** which thread runs it, and whether it runs every frame while the HUD is shown.
+- **Change:** the tick moved off the contested main update to the item bar HUD's own update, `uGUIHudItemWindow` vtable `0x143471BE0` index 76 (`sub_141E2B890`, slot `0x143471E40`, its only reference; live it held the game function, page `PAGE_READONLY`). The plugin swaps that slot with a compare-exchange and calls whatever it held, so it chains with code hooks and earlier slot hooks. The tick runs before the original on every call, so the HUD's flag-driven rebuild sees the sorted pouch and bar. Tested live in the next section.
+
+## Live result, HUD update build (2026-10-19 08:57–09:08 session)
+
+Build: commit `a282061`, DLL SHA-256 `F6608F1B129EE7330E416E1F8F0BE28B21BC7B4476BBEF84590910EAA6C1E248`, with FairTransmog 0.9.0 and MHW-DLSS4 0.9.4 installed.
+
+- **Observed, plugin log:** install line at 08:57:10.594; `item bar HUD update reached on thread 38104` at 08:59:12, once in the world. 21 sort passes followed over 9 minutes, each a single `Pouch sorted` line with at most one `Item bar set` line; no bursts of rewrites.
+- **Observed, plugin log:** passes were logged on threads 38104 (most), 38888, 38892, 38876, 3812, 38896 and 38884. **Inferred:** the game runs the HUD update on its job worker threads, not on one fixed thread. The plugin's try-lock (`g_tick_lock`) keeps passes from overlapping, and every pass holds the character lock (`user+8`). No crash or corruption was seen.
+- **Observed, plugin log:** the game placed new entries at the front or second place of the bar (Mega Potion at 09:05:03 `[2,1,7,…]`, Wyvern Ammo at 09:03:03 `[138,167,140,…]`) or at the end (Might Seed, Nulberry, Lifepowder); each was rewritten once into pouch order, and the Palico gadget entry 843 stayed at the end with no fight.
+- **Observed, plugin log 09:08:11:** after First-aid Med and EZ Ration were used up the items list had two gaps (`…,102,_,_,174`) and was closed up to `…,102,174`; the bar needed no rewrite.
+- **Observed, plugin log:** item list order puts Empty Phial (174) after EZ Ration (183), and First-aid Med (181) after Gunpowder Level 2 (102): the game's sort key, not the item ID, decides the order.
+- **Observed, user:** "seems to work proper". **Unknown:** whether the HUD selection stayed on its item through every reorder, and behaviour with the HUD hidden; the user reported no problem with either.
+- **Observed, FairTransmog log:** FairTransmog installed its main update and refresh hooks at 08:57:10.595 with this plugin no longer patching the main update. Its ini hot reload was not exercised in this session.
 
 ## Tooling incident
 
@@ -71,5 +84,6 @@ Deployed `MHW-AutoAutoSort.dll` 0.1.0-beta next to FairTransmog and other plugin
 
 ## Open questions
 
-- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (see the 0.1.0 live result).
-- **Unknown:** pouch list 2 contents; multiplayer behaviour; master-rank or story states where `sub_141895E80` filters differently.
+- **Unknown:** whether the HUD's selected item-bar entry follows the item or its position when the bar is rewritten during a hunt (no problem reported in the HUD update build).
+- **Unknown:** whether the HUD update, and so sorting, keeps running while the HUD is hidden (HUD display options, cutscenes).
+- **Unknown:** multiplayer behaviour; master-rank or story states where `sub_141895E80` filters differently.
