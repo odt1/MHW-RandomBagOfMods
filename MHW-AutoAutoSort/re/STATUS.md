@@ -15,7 +15,7 @@ Done 2026-10-19 09:43 session (FINDINGS, "Live result, 0.9.0 with FairTransmog 0
 
 1. Auto-Auto-Sort log: `Auto-sort: installed (item bar HUD update slot +0x3471E40, …)`, then `Auto-sort: active (first item bar HUD update on thread N)` once in the world; pickups sort as before.
 2. FairTransmog log: `Transmog: direct override hooks installed (frame tick slot +0x3404AB0, refresh +0x2041700)`; an ini edit (for example `All=300`, then `-1`) logs `Config:` and a refresh override within a second, on the main thread.
-3. Still open, low priority: sorting while the HUD is hidden; multiplayer.
+Still open, low priority: sorting while the HUD is hidden; multiplayer.
 
 ## Reading the plugin's state in a running game
 
