@@ -61,23 +61,19 @@ void TestAxis() {
     CHECK(Near(stick::Axis(0.37f, 0.0f, 0.0f), 0.37f));
 }
 
-void TestAxisLinear() {
+void TestCameraStart() {
     constexpr float kCut = 0.15f;
-    CHECK(stick::AxisLinear(0.0f, 0.01f, kCut) == 0.0f);
-    CHECK(stick::AxisLinear(0.005f, 0.01f, kCut) == 0.0f);
-    // Just past the deadzone: never cut by the game; the camera's slowest turn.
-    const float small = stick::AxisLinear(0.0101f, 0.01f, kCut);
-    CHECK(GameAxis(small, kCut) == small);
-    CHECK(Near(small * small, kCut * kCut, 1e-4f));
-    CHECK(GameAxis(stick::AxisLinear(-0.0101f, 0.01f, kCut), kCut) < 0.0f);
-    // The camera's speed (the square) is linear in the travel, full tilt is full speed.
-    CHECK(Near(stick::AxisLinear(1.0f, 0.01f, kCut), 1.0f));
-    CHECK(Near(stick::AxisLinear(-1.0f, 0.01f, kCut), -1.0f));
-    for (int i = 1; i <= 100; ++i) {
-        const float travel = i / 100.0f;
-        const float v = stick::AxisLinear(0.01f + 0.99f * travel, 0.01f, kCut);
-        CHECK(Near(v * v, kCut * kCut + (1.0f - kCut * kCut) * travel, 1e-4f));
-    }
+    // Below the game's slowest turn (the cut squared) the start stays at the cut.
+    CHECK(stick::CameraStart(kCut, 0.0f) == kCut);
+    CHECK(stick::CameraStart(kCut, 0.01f) == kCut);
+    CHECK(stick::CameraStart(kCut, -1.0f) == kCut);
+    // The first touch turns the camera at min_speed: the game squares the axis.
+    const float start = stick::CameraStart(kCut, 0.05f);
+    const float first = stick::Axis(0.0101f, 0.01f, start);
+    CHECK(GameAxis(first, kCut) == first);
+    CHECK(Near(first * first, 0.05f, 1e-4f));
+    // Full tilt is still full speed.
+    CHECK(stick::Axis(1.0f, 0.01f, start) == 1.0f);
 }
 
 void TestRadial() {
@@ -110,7 +106,7 @@ void TestRadial() {
 int main() {
     TestTravel();
     TestAxis();
-    TestAxisLinear();
+    TestCameraStart();
     TestRadial();
     if (g_failures != 0) {
         std::fprintf(stderr, "stick_math: %d failure(s)\n", g_failures);

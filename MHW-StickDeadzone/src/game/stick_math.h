@@ -42,15 +42,11 @@ inline float Axis(float v, float deadzone, float game_cut) {
     return std::copysign(game_cut + (1.0f - game_cut) * travel, v);
 }
 
-// The main camera squares each axis that passes its cut. This picks the axis value whose square, the
-// camera's speed, grows evenly with the travel: from its slowest turn (cut squared) to full speed.
-inline float AxisLinear(float v, float deadzone, float game_cut) {
-    const float travel = Travel(std::fabs(v), deadzone);
-    if (travel == 0.0f) {
-        return 0.0f;
-    }
-    const float slowest = game_cut * game_cut;
-    return std::copysign(std::max(game_cut, std::sqrt(slowest + (1.0f - slowest) * travel)), v);
+// The main camera turns at the square of each axis that passes its cut, so its slowest turn is the
+// cut squared, a few percent of full speed. Where the travel starts on the game's range so that the
+// first touch turns the camera at `min_speed` (a part of full speed); never below the cut.
+inline float CameraStart(float game_cut, float min_speed) {
+    return std::max(game_cut, std::sqrt(std::max(min_speed, 0.0f)));
 }
 
 inline float Length(Vec2 v) {

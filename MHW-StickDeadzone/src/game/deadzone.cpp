@@ -54,6 +54,8 @@ constexpr ULONGLONG kConfigCheckMs = 1000;
 constexpr ULONGLONG kStickLogMs = 1000;
 constexpr float kDefaultDeadzone = 0.01f;
 constexpr float kMaxDeadzone = 0.9f;
+constexpr float kDefaultMinSpeed = 0.05f;
+constexpr float kMaxMinSpeed = 0.5f;
 
 constexpr char kDefaultConfig[] =
     "; MHW Stick Deadzone\n"
@@ -66,9 +68,9 @@ constexpr char kDefaultConfig[] =
     "; Raise a value if that stick moves the hunter or the camera when you let go of it.\n"
     "; Enabled=0 leaves that stick to the game. Changes apply within a second in game.\n"
     ";\n"
-    "; Response (right stick): the game turns the camera at the square of the stick's tilt, so small\n"
-    "; tilts turn it very slowly. Game keeps that curve. Linear makes the camera's speed grow evenly\n"
-    "; with the tilt, from its slowest turn to full speed.\n"
+    "; MinSpeed (right stick) is how fast the camera turns right past the deadzone, as a part of its\n"
+    "; full speed (0.05 = 5%). The game's own curve takes it from there to full speed. The game's\n"
+    "; slowest turn is 0.0225, too slow to see; 0 keeps it.\n"
     "[LeftStick]\n"
     "Enabled=1\n"
     "Deadzone=0.01\n"
@@ -76,7 +78,7 @@ constexpr char kDefaultConfig[] =
     "[RightStick]\n"
     "Enabled=1\n"
     "Deadzone=0.01\n"
-    "Response=Game\n"
+    "MinSpeed=0.05\n"
     "\n"
     "; LogSticks=1 writes the left and right stick before and after once a second while one is held.\n"
     "[Debug]\n"
@@ -87,7 +89,7 @@ using PadUpdateFn = std::uint64_t(__fastcall*)(std::uint8_t* pad);
 struct StickConfig {
     bool enabled = true;
     float deadzone = kDefaultDeadzone;
-    bool linear = false;  // right stick: camera speed linear in the tilt instead of the game's square
+    float min_speed = kDefaultMinSpeed;  // right stick only
 };
 
 struct Cuts {
@@ -148,17 +150,14 @@ StickConfig ReadStick(const wchar_t* section, const char* name) noexcept {
     return stick;
 }
 
-bool ReadLinear(const wchar_t* section, const char* name) noexcept {
-    wchar_t text[16]{};
-    GetPrivateProfileStringW(section, L"Response", L"Game", text, static_cast<DWORD>(std::size(text)),
-                             g_config_path.c_str());
-    if (_wcsicmp(text, L"Linear") == 0) {
-        return true;
+float ReadMinSpeed(const wchar_t* section, const char* name) noexcept {
+    const float min_speed = ReadFloat(section, L"MinSpeed", kDefaultMinSpeed);
+    if (min_speed < 0.0f || min_speed > kMaxMinSpeed) {
+        SafeLog("Config: {} MinSpeed={} is outside 0.0 to {}; using {}.", name, min_speed, kMaxMinSpeed,
+                kDefaultMinSpeed);
+        return kDefaultMinSpeed;
     }
-    if (_wcsicmp(text, L"Game") != 0) {
-        SafeLog("Config: {} Response is neither Game nor Linear; using Game.", name);
-    }
-    return false;
+    return min_speed;
 }
 
 void ReloadConfig() noexcept {
@@ -173,11 +172,11 @@ void ReloadConfig() noexcept {
     g_config_time = time;
     g_left = ReadStick(L"LeftStick", "LeftStick");
     g_right = ReadStick(L"RightStick", "RightStick");
-    g_right.linear = ReadLinear(L"RightStick", "RightStick");
+    g_right.min_speed = ReadMinSpeed(L"RightStick", "RightStick");
     g_log_sticks = GetPrivateProfileIntW(L"Debug", L"LogSticks", 0, g_config_path.c_str()) != 0;
-    SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f} response {}, LogSticks={}.",
+    SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f} min speed {:.3f}, LogSticks={}.",
             g_left.enabled ? "on" : "off", g_left.deadzone, g_right.enabled ? "on" : "off", g_right.deadzone,
-            g_right.linear ? "Linear" : "Game", g_log_sticks ? 1 : 0);
+            g_right.min_speed, g_log_sticks ? 1 : 0);
 }
 
 float ReadCut(std::uint8_t* param, std::ptrdiff_t offset, float fallback) noexcept {
@@ -250,9 +249,8 @@ void Tick(std::uint8_t* pad) {
         ApplyStick(pad, kLeftX, kLeftLength, left, new_left);
     }
     if (g_right.enabled) {
-        const auto axis = g_right.linear ? stick::AxisLinear : stick::Axis;
-        new_right = {axis(right.x, g_right.deadzone, g_cuts.camera_x),
-                     axis(right.y, g_right.deadzone, g_cuts.camera_y)};
+        new_right = {stick::Axis(right.x, g_right.deadzone, stick::CameraStart(g_cuts.camera_x, g_right.min_speed)),
+                     stick::Axis(right.y, g_right.deadzone, stick::CameraStart(g_cuts.camera_y, g_right.min_speed))};
         ApplyStick(pad, kRightX, kRightLength, right, new_right);
     }
     if (g_log_sticks && now >= g_next_stick_log && (stick::Length(left) > 0.0f || stick::Length(right) > 0.0f)) {
