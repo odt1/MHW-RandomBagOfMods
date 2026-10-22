@@ -8,11 +8,12 @@ Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FIND
 - Confirmed in game (deployed 01:19): commit `c83cb3c`, DLL SHA-256 `E3F56FF4697348686DF6DCA9CF1E43AC791102B7FA0D33E30C3C211E3939C4BA`. Both sticks remapped as one radius onto the game's own gates (left 0.30, right 0.25). The user: "Finally, a real progress." Settings in use: left deadzone 0.05, right 0.0, LogSticks=1.
 - Since then only cleanup: one remap path per stick in `deadzone.cpp`, README.md, DEVELOPMENT.md, FINDINGS rewritten, BN helpers in `tools/bn`, dead-end Frida probes removed. Behavior unchanged. Deployed 01:31:41 (commit `bfea3c9`, DLL SHA-256 `12141574F8D8AA9C4407F50830DBFD3278FA176083895579B347B702E90E26EC`).
 
+- Release defaults chosen by the user: deadzone 0.05 for both sticks (code default and generated ini). The installed ini keeps the user's own test settings.
+
 ## Next
 
-1. Release defaults: the code and generated ini use deadzone 0.01 for both sticks (the user's testing default). Ask the user before packaging; 0.05 is a likely choice for most pads.
-2. Version 0.9.0 (as the other two mods did for their first release), README.nexus.bbcode in their style, `tools/package.ps1`.
-3. Open, only if the user notices: other stick readers with inline 0.30 or 0.25 cuts (some aim and special camera modes, the guild card camera, some menus), see FINDINGS.
+1. Version 0.9.0 (as the other two mods did for their first release), README.nexus.bbcode in their style, `tools/package.ps1`.
+2. Open, only if the user notices: other stick readers with inline 0.30 or 0.25 cuts (some aim and special camera modes, the guild card camera, some menus), see FINDINGS.
 
 ## Environment notes
 

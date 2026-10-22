@@ -18,17 +18,17 @@ The game ignores the first 30% of the left stick's travel (walking) and the firs
 ```ini
 [LeftStick]
 Enabled=1
-Deadzone=0.01
+Deadzone=0.05
 
 [RightStick]
 Enabled=1
-Deadzone=0.01
+Deadzone=0.05
 
 [Debug]
 LogSticks=0
 ```
 
-- `Deadzone` is how far a stick must move from its center before the game sees it, from 0.0 to 0.9 (0.05 = 5% of the stick's travel). Raise it if the hunter walks or the camera turns on its own after you let go of the stick. Worn sticks usually need 0.05 to 0.1; precise sticks (Hall effect, TMR) can go down to 0.
+- `Deadzone` is how far a stick must move from its center before the game sees it, from 0.0 to 0.9 (0.05 = 5% of the stick's travel). Raise it if the hunter walks or the camera turns on its own after you let go of the stick. Worn sticks may need 0.1 or more; precise sticks (Hall effect, TMR) can go down to 0.
 - `Enabled=0` leaves that stick to the game, with its original deadzone.
 - `LogSticks=1` writes the stick values before and after the plugin to the log once a second while you hold a stick. Use it to see what your stick reports at rest.
 

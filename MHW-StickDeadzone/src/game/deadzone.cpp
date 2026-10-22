@@ -59,14 +59,14 @@ constexpr float kMaxCut = 0.95f;
 
 constexpr ULONGLONG kConfigCheckMs = 1000;
 constexpr ULONGLONG kStickLogMs = 1000;
-constexpr float kDefaultDeadzone = 0.01f;
+constexpr float kDefaultDeadzone = 0.05f;
 constexpr float kMaxDeadzone = 0.9f;
 
 constexpr char kDefaultConfig[] =
     "; MHW Stick Deadzone\n"
     ";\n"
     "; Deadzone is how far a stick must move from the center before the game sees it, from 0.0 to\n"
-    "; 0.9 (0.01 = 1% of the stick's travel). The game itself ignores 30% of the left stick and 25%\n"
+    "; 0.9 (0.05 = 5% of the stick's travel). The game itself ignores 30% of the left stick and 25%\n"
     "; of the right stick. Past your deadzone the stick reaches the game's slowest walk or camera turn\n"
     "; right away and full tilt stays full tilt, so the game's own response is kept, spread over more\n"
     "; of the stick.\n"
@@ -74,11 +74,11 @@ constexpr char kDefaultConfig[] =
     "; Enabled=0 leaves that stick to the game. Changes apply within a second in game.\n"
     "[LeftStick]\n"
     "Enabled=1\n"
-    "Deadzone=0.01\n"
+    "Deadzone=0.05\n"
     "\n"
     "[RightStick]\n"
     "Enabled=1\n"
-    "Deadzone=0.01\n"
+    "Deadzone=0.05\n"
     "\n"
     "; LogSticks=1 writes the left and right stick before and after once a second while one is held.\n"
     "[Debug]\n"
