@@ -65,6 +65,10 @@ constexpr char kDefaultConfig[] =
     "; spread over more of the stick.\n"
     "; Raise a value if that stick moves the hunter or the camera when you let go of it.\n"
     "; Enabled=0 leaves that stick to the game. Changes apply within a second in game.\n"
+    ";\n"
+    "; Response (right stick): the game turns the camera at the square of the stick's tilt, so small\n"
+    "; tilts turn it very slowly. Game keeps that curve. Linear makes the camera's speed grow evenly\n"
+    "; with the tilt, from its slowest turn to full speed.\n"
     "[LeftStick]\n"
     "Enabled=1\n"
     "Deadzone=0.01\n"
@@ -72,6 +76,7 @@ constexpr char kDefaultConfig[] =
     "[RightStick]\n"
     "Enabled=1\n"
     "Deadzone=0.01\n"
+    "Response=Game\n"
     "\n"
     "; LogSticks=1 writes the left and right stick before and after once a second while one is held.\n"
     "[Debug]\n"
@@ -82,9 +87,11 @@ using PadUpdateFn = std::uint64_t(__fastcall*)(std::uint8_t* pad);
 struct StickConfig {
     bool enabled = true;
     float deadzone = kDefaultDeadzone;
+    bool linear = false;  // right stick: camera speed linear in the tilt instead of the game's square
 };
 
 struct Cuts {
+    bool from_param = false;
     float left = kDefaultLeftCut;
     float camera_x = kDefaultCameraCut;
     float camera_y = kDefaultCameraCut;
@@ -141,6 +148,19 @@ StickConfig ReadStick(const wchar_t* section, const char* name) noexcept {
     return stick;
 }
 
+bool ReadLinear(const wchar_t* section, const char* name) noexcept {
+    wchar_t text[16]{};
+    GetPrivateProfileStringW(section, L"Response", L"Game", text, static_cast<DWORD>(std::size(text)),
+                             g_config_path.c_str());
+    if (_wcsicmp(text, L"Linear") == 0) {
+        return true;
+    }
+    if (_wcsicmp(text, L"Game") != 0) {
+        SafeLog("Config: {} Response is neither Game nor Linear; using Game.", name);
+    }
+    return false;
+}
+
 void ReloadConfig() noexcept {
     WIN32_FILE_ATTRIBUTE_DATA attributes{};
     FILETIME time{};
@@ -153,10 +173,11 @@ void ReloadConfig() noexcept {
     g_config_time = time;
     g_left = ReadStick(L"LeftStick", "LeftStick");
     g_right = ReadStick(L"RightStick", "RightStick");
+    g_right.linear = ReadLinear(L"RightStick", "RightStick");
     g_log_sticks = GetPrivateProfileIntW(L"Debug", L"LogSticks", 0, g_config_path.c_str()) != 0;
-    SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f}, LogSticks={}.",
+    SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f} response {}, LogSticks={}.",
             g_left.enabled ? "on" : "off", g_left.deadzone, g_right.enabled ? "on" : "off", g_right.deadzone,
-            g_log_sticks ? 1 : 0);
+            g_right.linear ? "Linear" : "Game", g_log_sticks ? 1 : 0);
 }
 
 float ReadCut(std::uint8_t* param, std::ptrdiff_t offset, float fallback) noexcept {
@@ -171,6 +192,7 @@ void RefreshCuts() noexcept {
     Cuts cuts;
     auto* param = mem::Read<std::uint8_t*>(g_exe + kPlayerParamRva).value_or(nullptr);
     if (param != nullptr) {
+        cuts.from_param = true;
         cuts.left = std::max(ReadCut(param, kLeftHelperCut, kDefaultLeftCut),
                              ReadCut(param, kLeftNeutralCut, kDefaultLeftCut));
         cuts.camera_x = ReadCut(param, kCameraCutX, kDefaultCameraCut);
@@ -179,7 +201,7 @@ void RefreshCuts() noexcept {
     if (!g_cuts_logged || !(cuts == g_cuts)) {
         g_cuts_logged = true;
         SafeLog("Game deadzones ({}): left stick {:.3f}, right stick X {:.3f} Y {:.3f}.",
-                param != nullptr ? "rPlayerParam" : "defaults, rPlayerParam not loaded", cuts.left,
+                cuts.from_param ? "rPlayerParam" : "defaults, rPlayerParam not loaded", cuts.left,
                 cuts.camera_x, cuts.camera_y);
     }
     g_cuts = cuts;
@@ -228,8 +250,9 @@ void Tick(std::uint8_t* pad) {
         ApplyStick(pad, kLeftX, kLeftLength, left, new_left);
     }
     if (g_right.enabled) {
-        new_right = {stick::Axis(right.x, g_right.deadzone, g_cuts.camera_x),
-                     stick::Axis(right.y, g_right.deadzone, g_cuts.camera_y)};
+        const auto axis = g_right.linear ? stick::AxisLinear : stick::Axis;
+        new_right = {axis(right.x, g_right.deadzone, g_cuts.camera_x),
+                     axis(right.y, g_right.deadzone, g_cuts.camera_y)};
         ApplyStick(pad, kRightX, kRightLength, right, new_right);
     }
     if (g_log_sticks && now >= g_next_stick_log && (stick::Length(left) > 0.0f || stick::Length(right) > 0.0f)) {
