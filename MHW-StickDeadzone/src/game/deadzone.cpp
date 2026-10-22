@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -34,10 +35,14 @@ constexpr std::array<std::uint8_t, 16> kPadUpdatePrologue{
 // the hunter's controller reads) and context 1. Keyboard and mouse input overwrite context 0's
 // sticks after the copy.
 constexpr std::array<std::ptrdiff_t, 3> kStickBlocks{0xC28, 0xCE0, 0xD98};
-constexpr std::ptrdiff_t kLeftX = 0x18;  // then left Y
-constexpr std::ptrdiff_t kRightX = 0x20; // then right Y
-constexpr std::ptrdiff_t kLeftLength = 0x28;
-constexpr std::ptrdiff_t kRightLength = 0x2C;
+
+// Where a stick sits in a block: X, then Y, and its length further on.
+struct StickLayout {
+    std::ptrdiff_t xy;
+    std::ptrdiff_t length;
+};
+constexpr StickLayout kLeftLayout{0x18, 0x28};
+constexpr StickLayout kRightLayout{0x20, 0x2C};
 
 // rPlayerParam fields the game compares the sticks with; each one is a plain cut, values at or
 // above it are used unchanged. The hunter's controller has a helper per stick that flags the stick
@@ -130,7 +135,7 @@ float ReadFloat(const wchar_t* section, const wchar_t* key, float fallback) noex
     return value;
 }
 
-StickConfig ReadStick(const wchar_t* section, const char* name) noexcept {
+StickConfig ReadStickConfig(const wchar_t* section, const char* name) noexcept {
     StickConfig stick;
     stick.enabled = GetPrivateProfileIntW(section, L"Enabled", 1, g_config_path.c_str()) != 0;
     const float deadzone = ReadFloat(section, L"Deadzone", kDefaultDeadzone);
@@ -153,8 +158,8 @@ void ReloadConfig() noexcept {
         return;
     }
     g_config_time = time;
-    g_left = ReadStick(L"LeftStick", "LeftStick");
-    g_right = ReadStick(L"RightStick", "RightStick");
+    g_left = ReadStickConfig(L"LeftStick", "LeftStick");
+    g_right = ReadStickConfig(L"RightStick", "RightStick");
     g_log_sticks = GetPrivateProfileIntW(L"Debug", L"LogSticks", 0, g_config_path.c_str()) != 0;
     SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f}, LogSticks={}.",
             g_left.enabled ? "on" : "off", g_left.deadzone, g_right.enabled ? "on" : "off", g_right.deadzone,
@@ -187,30 +192,39 @@ void RefreshCuts() noexcept {
     g_cuts = cuts;
 }
 
-stick::Vec2 ReadVec(std::uint8_t* block, std::ptrdiff_t offset) {
-    return {*reinterpret_cast<float*>(block + offset), *reinterpret_cast<float*>(block + offset + 4)};
+stick::Vec2 ReadStick(const std::uint8_t* block, StickLayout layout) {
+    const auto* xy = reinterpret_cast<const float*>(block + layout.xy);
+    return {xy[0], xy[1]};
 }
 
-void WriteStick(std::uint8_t* block, std::ptrdiff_t offset, std::ptrdiff_t length_offset, stick::Vec2 v) {
-    *reinterpret_cast<float*>(block + offset) = v.x;
-    *reinterpret_cast<float*>(block + offset + 4) = v.y;
-    *reinterpret_cast<float*>(block + length_offset) = stick::Length(v);
+void WriteStick(std::uint8_t* block, StickLayout layout, stick::Vec2 v) {
+    auto* xy = reinterpret_cast<float*>(block + layout.xy);
+    xy[0] = v.x;
+    xy[1] = v.y;
+    *reinterpret_cast<float*>(block + layout.length) = stick::Length(v);
 }
 
-bool Same(stick::Vec2 a, stick::Vec2 b) {
-    return a.x == b.x && a.y == b.y;
-}
+struct Remapped {
+    stick::Vec2 before;
+    stick::Vec2 after;
+};
 
-// Rewrites one stick in the converted block and in each copy that still holds the converted value;
-// a copy that keyboard or mouse input replaced is left alone.
-void ApplyStick(std::uint8_t* pad, std::ptrdiff_t offset, std::ptrdiff_t length_offset, stick::Vec2 converted,
-                stick::Vec2 result) {
+// Remaps one stick in the converted block and in each copy that still holds the converted value; a
+// copy that keyboard or mouse input replaced is left alone.
+Remapped RemapStick(std::uint8_t* pad, StickLayout layout, const StickConfig& config, float game_cut) {
+    const stick::Vec2 before = ReadStick(pad + kStickBlocks[0], layout);
+    if (!config.enabled) {
+        return {before, before};
+    }
+    const stick::Vec2 after = stick::Radial(before, config.deadzone, game_cut);
     for (const std::ptrdiff_t block_offset : kStickBlocks) {
         std::uint8_t* block = pad + block_offset;
-        if (block_offset == kStickBlocks[0] || Same(ReadVec(block, offset), converted)) {
-            WriteStick(block, offset, length_offset, result);
+        const stick::Vec2 current = ReadStick(block, layout);
+        if (block_offset == kStickBlocks[0] || (current.x == before.x && current.y == before.y)) {
+            WriteStick(block, layout, after);
         }
     }
+    return {before, after};
 }
 
 void Tick(std::uint8_t* pad) {
@@ -220,23 +234,14 @@ void Tick(std::uint8_t* pad) {
         ReloadConfig();
         RefreshCuts();
     }
-    std::uint8_t* converted = pad + kStickBlocks[0];
-    const stick::Vec2 left = ReadVec(converted, kLeftX);
-    const stick::Vec2 right = ReadVec(converted, kRightX);
-    stick::Vec2 new_left = left;
-    stick::Vec2 new_right = right;
-    if (g_left.enabled) {
-        new_left = stick::Radial(left, g_left.deadzone, g_cuts.left);
-        ApplyStick(pad, kLeftX, kLeftLength, left, new_left);
-    }
-    if (g_right.enabled) {
-        new_right = stick::Radial(right, g_right.deadzone, g_cuts.right);
-        ApplyStick(pad, kRightX, kRightLength, right, new_right);
-    }
-    if (g_log_sticks && now >= g_next_stick_log && (stick::Length(left) > 0.0f || stick::Length(right) > 0.0f)) {
+    const Remapped left = RemapStick(pad, kLeftLayout, g_left, g_cuts.left);
+    const Remapped right = RemapStick(pad, kRightLayout, g_right, g_cuts.right);
+    const bool held = stick::Length(left.before) > 0.0f || stick::Length(right.before) > 0.0f;
+    if (g_log_sticks && held && now >= g_next_stick_log) {
         g_next_stick_log = now + kStickLogMs;
         SafeLog("Sticks: left ({:.3f}, {:.3f}) -> ({:.3f}, {:.3f}), right ({:.3f}, {:.3f}) -> ({:.3f}, {:.3f}).",
-                left.x, left.y, new_left.x, new_left.y, right.x, right.y, new_right.x, new_right.y);
+                left.before.x, left.before.y, left.after.x, left.after.y, right.before.x, right.before.y,
+                right.after.x, right.after.y);
     }
 }
 
@@ -275,7 +280,8 @@ bool Install(const std::filesystem::path& config_path) {
 
     std::error_code error;
     if (!std::filesystem::exists(g_config_path, error) && !WriteDefaultConfig()) {
-        log::Write("Stick deadzone: could not create the default config; using deadzone 0.01 for both sticks.");
+        log::Log("Stick deadzone: could not create the default config; using deadzone {} for both sticks.",
+                 kDefaultDeadzone);
     }
     ReloadConfig();
 
