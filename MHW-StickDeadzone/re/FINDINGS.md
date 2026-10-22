@@ -1,0 +1,41 @@
+# MHW Stick Deadzone: reverse-engineering findings
+
+Every claim is marked **observed** (seen in disassembly, decompiled code, memory or a live trace), **inferred** (concluded from observations) or **unknown**. Binary: `MonsterHunterWorld.exe`, packed SHA-256 `C2EBBBD2C49F216D484E31A5219BED419EB1E5E7D206D02CBA040A3AB79D90EA` (the build FairTransmog and Auto-Auto-Sort support). Addresses are RVAs in the unpacked image (`C:\Projects\MHW Mods\re\inputs\mhw-current\MonsterHunterWorld.exe.unpacked.exe`, BN database beside it). Live results are from the user's game on 2026-10-22/23, Xbox-type pad through XInput.
+
+## Input path, device to floats
+
+- **Observed:** the pad singleton is `sMhSteamController` (global `0x51C4558`, DTI name read live). It holds 4 devices of 0x2D8 bytes at `+0x38`; the selected index is at `+0x1518`.
+- **Observed:** `sub_1422A59D0` polls one device: device type 0 is Steam Controller (`sub_1422A5710`), type 2 DirectInput (`GetDeviceState` 0x110 bytes, then `sub_1422A0880`), otherwise XInput (`XInputGetState` from `XINPUT9_1_0.dll`, then `sub_1422A1280`). Live: type 4, XInput index 0, called from `+0x22A59FE`.
+- **Observed:** `sub_1422A1280` stores raw XInput thumbs as int32 in the device: RX `+0x178`, RY `+0x17C`, LX `+0x180`, LY `+0x184`; triggers `+0x188/+0x189`. Stick-as-button bits use the int16 threshold at device `+0x1A` (live value 16383, about 0.5) and are what menus navigate with.
+- **Observed:** `sub_1418D7720(padinfo, device)` (one caller, `sub_141B168C0` at `+0x1B1694A`, the pad singleton's update) converts each axis with `sub_142107CB0(raw, 0.0)`: `raw/32767` or `raw/32768`, with a per-axis deadzone argument that is always `0.0` (`xorps xmm1, xmm1` before each of the 4 calls). Output at `sPad+0xC28`: LX `+0x18`, LY `+0x1C`, RX `+0x20`, RY `+0x24`, L magnitude `+0x28`, R magnitude `+0x2C`. So the floats the game reads have **no deadzone** at this point.
+- **Observed:** `sub_1418D7C40` copies that 0xB8-byte block into two contexts, `sPad+0xCE0` (context 0) and `sPad+0xD98` (context 1). `sub_141B17080` overwrites context 0 sticks from keyboard keys (`sMhKeyboard`, `0x51C53B0`, `+0x27A8..+0x27C4`) when keys are held.
+- **Observed:** accessors `sub_141B15DA0` (LX), `0x1B15E70` (LY), `0x1B160E0` (RX), `0x1B161B0` (RY), `0x1B15C90` (L magnitude), `0x1B15FD0` (R magnitude), argument 2 = context. Live Interceptor trace in the hub (4 s): the only callers were `sub_1411A9C50` (`+0x11AA1AF..+0x11AA1E7`), once per frame, context 0.
+- **Observed:** `sub_1411A9C50` copies LX, LY, RX, RY unchanged to the hunter's controller, `cHumanControllerPlMaster` (vtable `0x322BBB0`, DTI name read live), at `+0x30/+0x34/+0x38/+0x3C`. The controller's `+0xDB0` is the `uPlayer`.
+
+## Where the deadzones are
+
+All three are plain cuts with no rescale: a value under the threshold becomes 0, a value at or over it passes unchanged.
+
+- **Observed, movement:** `cHumanControllerPad` update `sub_141230BB0` (vtable `0x322B910` slot 6) compares the left stick magnitude `+0x960` with `sub_1419A0800(0)`, which returns `rPlayerParam+0x134` (`+0x12316BC`, `+0x1231942`, `+0x1232C6B`). `sub_1419A0800(1)` returns `+0x138`, `(2)` returns `+0x13C`.
+- **Observed, main camera:** `sub_1412A9B70` copies `rPlayerParam+0x12C/+0x130` into the camera settings block at camera `+0x1578/+0x157C` every frame (live: 251 calls in 2 s, same count as the deadzone function). `sub_141F9EA40` zeroes the camera stick input `+0xA90` (X) / `+0xA94` (Y) when `|v| < +0x1578` / `+0x157C`, then passes each axis through `sub_142176600(v, 2)` (inferred: a signed power curve, exponent 2) and the camera speed and acceleration parameters.
+- **Observed:** `rPlayerParam` (resource class name read live; global `0x5011F58`, 2841 code references) live values: `+0x120` 0.60, `+0x124` 0.30, `+0x128` 0.25, `+0x12C` 0.15, `+0x130` 0.15, `+0x134` 0.30, `+0x138` 0.85, `+0x13C` 0.30, `+0x150` 0.70, `+0x154` 0.20, `+0x158` 90.
+- **Observed:** `+0x124` and `+0x128` are thresholds of two stick-direction helper classes (`sub_14122DB00`, `sub_14122DE20`: active when magnitude >= threshold). `+0x150/+0x154/+0x158` drive a left-stick flick detector (`sub_14122DBA0`). Which gameplay actions use them is **unknown**.
+- **Observed, other cameras and menus:** inline per-axis `0.3` cuts with rescale `(|v|-0.3)/0.7` or `(|v|-0.3)*k`: `sub_1404DA030` (LX/LY), `sub_1405374B0` (RX/RY, mode-dependent camera), `sub_1410D5AE0` (`uGuildCardCamera`); radial `0.25` cuts: `sub_14126C8C0` (R magnitude), `sub_140582820` (`x²+y² >= 0.0625`). These are not the hunter's normal movement or camera; which screens use each is **unknown**.
+
+## Corrections and details found after the first live tests
+
+- **Observed:** the pad singleton's update `sub_141B168C0` is reached through `sMhSteamController`'s vtable (`0x142F87138`, DTI lookup) at index 6, slot RVA `0x2F87168`; a second reference sits in `sMhPad`'s vtable `0x33FC580`.
+- **Observed:** `cHumanControllerPad`'s constructor `sub_14122E8C0` places two stick helpers: `+0x950` with vtable `0x1432418D0` (update `sub_14122DB00`, threshold `rPlayerParam+0x124`) for the left stick (`+0x968/+0x96C`), `+0x978` with vtable `0x143241900` (update `sub_14122DE20`, threshold `+0x128`) for the right stick (`+0x990/+0x994`). The update copies the hunter's sticks there (`+0x1231046..+0x1231067`) and calls both helpers through slot `+0x28`.
+- **Observed:** the left helper's flag `+0x958` is read through `sub_14122FF80` (61 callers) and directly in the movement code (`*(arg1 + 0x958) == 0` checks in `sub_141230BB0`). **Inferred:** this, not `+0x134`, is the gate that kept movement unchanged when only `+0x134` was lowered.
+- **Observed:** the main camera update `sub_1412A0530` reads the right stick through `sub_14122FF90` (`return pad + 0x990`, the raw copy), not through the right helper's flag, and hands it to the camera; `sub_141F9EA40` cuts each axis at the camera block's `+0x1578/+0x157C` and then calls `sub_142176600(v, 2)`, a signed integer power (observed loop of multiplications, exponent 2 passed as an immediate). **Inferred:** the camera's response is `sign(v)·v²` over the cut, so lowering the cut from 0.15 to 0.03 only opened outputs of 0.0009 to 0.0225 of full speed, which matches the user's "didn't seem to work".
+- **Inferred:** "the same as before, without the deadzone" therefore means mapping the travel past the user's deadzone onto the game's old range (0.30 to 1 for the left stick, radial; 0.15 to 1 per axis for the right stick) and leaving the game's thresholds and curve alone. That is what 0.1.0 does.
+
+## Live test results
+
+- **Observed (2026-10-23):** a Frida prototype that remapped the floats at the source (`sub_1418D7720` on leave) to beat an assumed game deadzone of 0.30 felt wrong to the user: "Scaling feels way off, e.g. camera is too sensitive. It should be linear and behave as before, just without the deadzone." **Inferred** cause: the main camera's real cut is 0.15 per axis with no rescale, and the "axial" compensation turned tiny noise on the other axis into 0.30.
+- **Observed (2026-10-23 ~00:20):** wrote `rPlayerParam+0x12C/+0x130` = 0.03 and `+0x134` = 0.05 live (`tools/live/setparam.js`, memory writes only). A later read showed the values held, yet the user reported: "Didn't seem to work in-game, entering different zone/triggering loadscreen didn't help." The user asked for 0.01 as the testing default from now on.
+
+## Tooling incident
+
+- **Observed:** a Frida hardware-watchpoint probe (`Thread.setHardwareWatchpoint`) crashed the game at 23:52:37 with exception `0x80000004` (single step) at `+0x1B15E68`, minutes after the script had unset the watchpoints and detached. **Inferred:** a debug register stayed armed on one thread. Do not use hardware watchpoints from Frida in this game.
+- **Observed:** the game crashed again at 2026-10-23 00:31:30 inside `frida-agent.dll` (exception `0xC0000409`), during or right after a read-only script, in a process that had seen about ten Frida sessions, one of them (the prototype with an Interceptor hook) ended by killing the CLI rather than detaching. **Inferred:** the agent was left in a bad state. Use Frida sparingly in one game process, always let sessions end with `-t`, and test through the plugin itself (`[Debug] LogSticks=1`) instead.

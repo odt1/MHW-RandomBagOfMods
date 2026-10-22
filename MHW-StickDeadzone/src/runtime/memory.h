@@ -1,0 +1,40 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <type_traits>
+
+namespace stick_deadzone::mem {
+
+bool Read(const void* source, void* destination, size_t size) noexcept;
+
+template <typename T>
+std::optional<T> Read(const void* source) noexcept {
+    static_assert(std::is_trivially_copyable_v<T>);
+    T value{};
+    if (!Read(source, &value, sizeof(value))) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+bool Write(void* destination, const void* source, size_t size) noexcept;
+bool Matches(const void* address, std::span<const uint8_t> expected) noexcept;
+
+struct PointerPatchResult {
+    bool installed;
+    bool protection_restored;
+};
+
+// Only naturally aligned slots on non-executable pages may be replaced.
+PointerPatchResult ReplacePointer(void** slot, void* expected, void* replacement) noexcept;
+
+// Points a function pointer slot at `replacement` and leaves the value it replaced in `*previous`,
+// stored before the swap makes `replacement` reachable. When another thread (another plugin hooking
+// the same slot) changes the slot between the read and the swap, it retries on the new value, so
+// both hooks end up chained. A slot holding null or `replacement` already is left alone.
+PointerPatchResult HookPointer(void** slot, void* replacement, void** previous) noexcept;
+
+}  // namespace stick_deadzone::mem

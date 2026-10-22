@@ -1,0 +1,13 @@
+# Build output and packages
+build/
+dist/
+.vs/
+
+# Local deployment backups
+re/deployment-backups/
+
+# Local tool settings
+.claude/
+
+# Python bytecode
+__pycache__/
