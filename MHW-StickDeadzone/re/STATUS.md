@@ -7,7 +7,6 @@ Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FIND
 - Repository: `C:\Projects\MHW Mods\MHW-StickDeadzone`, branch `main`, its own git repo, excluded from the parent FairTransmog repo through `C:\Projects\MHW Mods\.git\info\exclude`.
 - Confirmed in game (deployed 01:19): commit `c83cb3c`, DLL SHA-256 `E3F56FF4697348686DF6DCA9CF1E43AC791102B7FA0D33E30C3C211E3939C4BA`. Both sticks remapped as one radius onto the game's own gates (left 0.30, right 0.25). The user: "Finally, a real progress." Settings in use: left deadzone 0.05, right 0.0, LogSticks=1.
 - Since then only cleanup: one remap path per stick in `deadzone.cpp`, README.md, DEVELOPMENT.md, FINDINGS rewritten, BN helpers in `tools/bn`, dead-end Frida probes removed. Behavior unchanged. Deployed 01:31:41 (commit `bfea3c9`, DLL SHA-256 `12141574F8D8AA9C4407F50830DBFD3278FA176083895579B347B702E90E26EC`).
-
 - Release defaults chosen by the user: deadzone 0.05 for both sticks (code default and generated ini). The installed ini keeps the user's own test settings.
 
 ## Next
