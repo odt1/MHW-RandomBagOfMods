@@ -35,47 +35,6 @@ void TestTravel() {
     CHECK(Near(stick::Travel(0.5f, 0.0f), 0.5f));  // no deadzone: travel is the length
 }
 
-void TestAxis() {
-    constexpr float kCut = 0.15f;
-    CHECK(stick::Axis(0.0f, 0.01f, kCut) == 0.0f);
-    CHECK(stick::Axis(0.005f, 0.01f, kCut) == 0.0f);
-    CHECK(stick::Axis(-0.009f, 0.01f, kCut) == 0.0f);
-    // Just past the deadzone: the camera's slowest turn, never cut by the game.
-    const float small = stick::Axis(0.011f, 0.01f, kCut);
-    CHECK(small >= kCut && small < kCut + 0.01f);
-    CHECK(GameAxis(small, kCut) == small);
-    CHECK(GameAxis(stick::Axis(-0.011f, 0.01f, kCut), kCut) < 0.0f);
-    // Full tilt stays full tilt, both ways.
-    CHECK(stick::Axis(1.0f, 0.01f, kCut) == 1.0f);
-    CHECK(stick::Axis(-1.0f, 0.01f, kCut) == -1.0f);
-    // Linear in between: halfway through the travel is halfway through the game's range.
-    CHECK(Near(stick::Axis(0.505f, 0.01f, kCut), kCut + (1.0f - kCut) * 0.5f));
-    // Monotonic.
-    float last = 0.0f;
-    for (int i = 0; i <= 1000; ++i) {
-        const float v = stick::Axis(i / 1000.0f, 0.01f, kCut);
-        CHECK(v >= last);
-        last = v;
-    }
-    // Deadzone 0 and cut 0 leave the axis unchanged.
-    CHECK(Near(stick::Axis(0.37f, 0.0f, 0.0f), 0.37f));
-}
-
-void TestCameraStart() {
-    constexpr float kCut = 0.15f;
-    // Below the game's slowest turn (the cut squared) the start stays at the cut.
-    CHECK(stick::CameraStart(kCut, 0.0f) == kCut);
-    CHECK(stick::CameraStart(kCut, 0.01f) == kCut);
-    CHECK(stick::CameraStart(kCut, -1.0f) == kCut);
-    // The first touch turns the camera at min_speed: the game squares the axis.
-    const float start = stick::CameraStart(kCut, 0.05f);
-    const float first = stick::Axis(0.0101f, 0.01f, start);
-    CHECK(GameAxis(first, kCut) == first);
-    CHECK(Near(first * first, 0.05f, 1e-4f));
-    // Full tilt is still full speed.
-    CHECK(stick::Axis(1.0f, 0.01f, start) == 1.0f);
-}
-
 void TestRadial() {
     constexpr float kCut = 0.30f;
     CHECK(stick::Length(stick::Radial({0.0f, 0.0f}, 0.01f, kCut)) == 0.0f);
@@ -96,18 +55,45 @@ void TestRadial() {
     CHECK(Near(stick::Length(stick::Radial({1.0f, 1.0f}, 0.01f, kCut)), 1.0f));
     // Linear in between.
     CHECK(Near(stick::Length(stick::Radial({0.505f, 0.0f}, 0.01f, kCut)), kCut + (1.0f - kCut) * 0.5f));
+    // Monotonic.
+    float last = 0.0f;
+    for (int i = 0; i <= 1000; ++i) {
+        const float length = stick::Length(stick::Radial({i / 1000.0f, 0.0f}, 0.01f, kCut));
+        CHECK(length >= last);
+        last = length;
+    }
     // A deadzone above the game's cut still maps its edge to the cut.
     CHECK(stick::Length(stick::Radial({0.5f, 0.0f}, 0.5f, kCut)) == 0.0f);
     CHECK(Near(stick::Length(stick::Radial({0.75f, 0.0f}, 0.5f, kCut)), kCut + (1.0f - kCut) * 0.5f));
+}
+
+// Right stick: the camera turns only while the stick's length reaches 0.25 (the right helper's
+// flag), then each axis of at least 0.15 turns it at the axis squared.
+void TestCamera() {
+    constexpr float kGate = 0.25f;
+    constexpr float kAxisCut = 0.15f;
+    // The slightest push along an axis opens the gate and turns the camera at the game's slowest
+    // real speed, the gate squared.
+    const stick::Vec2 small = stick::Radial({0.011f, 0.0f}, 0.01f, kGate);
+    CHECK(stick::Length(small) >= kGate);
+    CHECK(Near(GameAxis(small.x, kAxisCut), kGate, 1e-3f));
+    // A mostly sideways push keeps its small vertical part under the axis cut, as in the game,
+    // so noise on the other axis does not tilt the camera.
+    const stick::Vec2 sideways = stick::Radial({0.03f, 0.003f}, 0.0f, kGate);
+    CHECK(GameAxis(sideways.x, kAxisCut) != 0.0f);
+    CHECK(GameAxis(sideways.y, kAxisCut) == 0.0f);
+    // A small diagonal push turns both ways.
+    const stick::Vec2 diagonal = stick::Radial({0.02f, 0.02f}, 0.01f, kGate);
+    CHECK(GameAxis(diagonal.x, kAxisCut) != 0.0f);
+    CHECK(GameAxis(diagonal.y, kAxisCut) != 0.0f);
 }
 
 }  // namespace
 
 int main() {
     TestTravel();
-    TestAxis();
-    TestCameraStart();
     TestRadial();
+    TestCamera();
     if (g_failures != 0) {
         std::fprintf(stderr, "stick_math: %d failure(s)\n", g_failures);
         return 1;

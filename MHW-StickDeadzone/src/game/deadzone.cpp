@@ -40,37 +40,33 @@ constexpr std::ptrdiff_t kLeftLength = 0x28;
 constexpr std::ptrdiff_t kRightLength = 0x2C;
 
 // rPlayerParam fields the game compares the sticks with; each one is a plain cut, values at or
-// above it are used unchanged.
-constexpr std::ptrdiff_t kLeftHelperCut = 0x124;   // left stick "active" flag of the hunter's controller
+// above it are used unchanged. The hunter's controller has a helper per stick that flags the stick
+// active when its length reaches the helper's cut; movement and the camera act only while it is set.
+constexpr std::ptrdiff_t kLeftHelperCut = 0x124;   // left stick helper
 constexpr std::ptrdiff_t kLeftNeutralCut = 0x134;  // movement's neutral check
-constexpr std::ptrdiff_t kCameraCutY = 0x12C;      // main camera, per axis (copied into the camera
-constexpr std::ptrdiff_t kCameraCutX = 0x130;      // every frame; axis order inferred)
+constexpr std::ptrdiff_t kRightHelperCut = 0x128;  // right stick helper, gates the camera
+constexpr std::ptrdiff_t kCameraAxisCutA = 0x12C;  // main camera, per axis, after the gate; a push
+constexpr std::ptrdiff_t kCameraAxisCutB = 0x130;  // along one axis must pass these too
 // Values seen in the game's own pl_param, used while rPlayerParam is not loaded.
 constexpr float kDefaultLeftCut = 0.30f;
-constexpr float kDefaultCameraCut = 0.15f;
+constexpr float kDefaultRightCut = 0.25f;
 constexpr float kMaxCut = 0.95f;
 
 constexpr ULONGLONG kConfigCheckMs = 1000;
 constexpr ULONGLONG kStickLogMs = 1000;
 constexpr float kDefaultDeadzone = 0.01f;
 constexpr float kMaxDeadzone = 0.9f;
-constexpr float kDefaultMinSpeed = 0.05f;
-constexpr float kMaxMinSpeed = 0.5f;
 
 constexpr char kDefaultConfig[] =
     "; MHW Stick Deadzone\n"
     ";\n"
     "; Deadzone is how far a stick must move from the center before the game sees it, from 0.0 to\n"
-    "; 0.9 (0.01 = 1% of the stick's travel). The game itself ignores 30% of the left stick and 15%\n"
-    "; of each right stick axis. Past your deadzone the stick reaches the game's slowest walk or\n"
-    "; camera turn right away and full tilt stays full tilt, so the game's own response is kept,\n"
-    "; spread over more of the stick.\n"
+    "; 0.9 (0.01 = 1% of the stick's travel). The game itself ignores 30% of the left stick and 25%\n"
+    "; of the right stick. Past your deadzone the stick reaches the game's slowest walk or camera turn\n"
+    "; right away and full tilt stays full tilt, so the game's own response is kept, spread over more\n"
+    "; of the stick.\n"
     "; Raise a value if that stick moves the hunter or the camera when you let go of it.\n"
     "; Enabled=0 leaves that stick to the game. Changes apply within a second in game.\n"
-    ";\n"
-    "; MinSpeed (right stick) is how fast the camera turns right past the deadzone, as a part of its\n"
-    "; full speed (0.05 = 5%). The game's own curve takes it from there to full speed. The game's\n"
-    "; slowest turn is 0.0225, too slow to see; 0 keeps it.\n"
     "[LeftStick]\n"
     "Enabled=1\n"
     "Deadzone=0.01\n"
@@ -78,7 +74,6 @@ constexpr char kDefaultConfig[] =
     "[RightStick]\n"
     "Enabled=1\n"
     "Deadzone=0.01\n"
-    "MinSpeed=0.05\n"
     "\n"
     "; LogSticks=1 writes the left and right stick before and after once a second while one is held.\n"
     "[Debug]\n"
@@ -89,14 +84,12 @@ using PadUpdateFn = std::uint64_t(__fastcall*)(std::uint8_t* pad);
 struct StickConfig {
     bool enabled = true;
     float deadzone = kDefaultDeadzone;
-    float min_speed = kDefaultMinSpeed;  // right stick only
 };
 
 struct Cuts {
     bool from_param = false;
     float left = kDefaultLeftCut;
-    float camera_x = kDefaultCameraCut;
-    float camera_y = kDefaultCameraCut;
+    float right = kDefaultRightCut;
 
     bool operator==(const Cuts&) const = default;
 };
@@ -150,16 +143,6 @@ StickConfig ReadStick(const wchar_t* section, const char* name) noexcept {
     return stick;
 }
 
-float ReadMinSpeed(const wchar_t* section, const char* name) noexcept {
-    const float min_speed = ReadFloat(section, L"MinSpeed", kDefaultMinSpeed);
-    if (min_speed < 0.0f || min_speed > kMaxMinSpeed) {
-        SafeLog("Config: {} MinSpeed={} is outside 0.0 to {}; using {}.", name, min_speed, kMaxMinSpeed,
-                kDefaultMinSpeed);
-        return kDefaultMinSpeed;
-    }
-    return min_speed;
-}
-
 void ReloadConfig() noexcept {
     WIN32_FILE_ATTRIBUTE_DATA attributes{};
     FILETIME time{};
@@ -172,11 +155,10 @@ void ReloadConfig() noexcept {
     g_config_time = time;
     g_left = ReadStick(L"LeftStick", "LeftStick");
     g_right = ReadStick(L"RightStick", "RightStick");
-    g_right.min_speed = ReadMinSpeed(L"RightStick", "RightStick");
     g_log_sticks = GetPrivateProfileIntW(L"Debug", L"LogSticks", 0, g_config_path.c_str()) != 0;
-    SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f} min speed {:.3f}, LogSticks={}.",
+    SafeLog("Config: left stick {} deadzone {:.3f}, right stick {} deadzone {:.3f}, LogSticks={}.",
             g_left.enabled ? "on" : "off", g_left.deadzone, g_right.enabled ? "on" : "off", g_right.deadzone,
-            g_right.min_speed, g_log_sticks ? 1 : 0);
+            g_log_sticks ? 1 : 0);
 }
 
 float ReadCut(std::uint8_t* param, std::ptrdiff_t offset, float fallback) noexcept {
@@ -194,14 +176,13 @@ void RefreshCuts() noexcept {
         cuts.from_param = true;
         cuts.left = std::max(ReadCut(param, kLeftHelperCut, kDefaultLeftCut),
                              ReadCut(param, kLeftNeutralCut, kDefaultLeftCut));
-        cuts.camera_x = ReadCut(param, kCameraCutX, kDefaultCameraCut);
-        cuts.camera_y = ReadCut(param, kCameraCutY, kDefaultCameraCut);
+        cuts.right = std::max({ReadCut(param, kRightHelperCut, kDefaultRightCut),
+                               ReadCut(param, kCameraAxisCutA, 0.0f), ReadCut(param, kCameraAxisCutB, 0.0f)});
     }
     if (!g_cuts_logged || !(cuts == g_cuts)) {
         g_cuts_logged = true;
-        SafeLog("Game deadzones ({}): left stick {:.3f}, right stick X {:.3f} Y {:.3f}.",
-                cuts.from_param ? "rPlayerParam" : "defaults, rPlayerParam not loaded", cuts.left,
-                cuts.camera_x, cuts.camera_y);
+        SafeLog("Game deadzones ({}): left stick {:.3f}, right stick {:.3f}.",
+                cuts.from_param ? "rPlayerParam" : "defaults, rPlayerParam not loaded", cuts.left, cuts.right);
     }
     g_cuts = cuts;
 }
@@ -249,8 +230,7 @@ void Tick(std::uint8_t* pad) {
         ApplyStick(pad, kLeftX, kLeftLength, left, new_left);
     }
     if (g_right.enabled) {
-        new_right = {stick::Axis(right.x, g_right.deadzone, stick::CameraStart(g_cuts.camera_x, g_right.min_speed)),
-                     stick::Axis(right.y, g_right.deadzone, stick::CameraStart(g_cuts.camera_y, g_right.min_speed))};
+        new_right = stick::Radial(right, g_right.deadzone, g_cuts.right);
         ApplyStick(pad, kRightX, kRightLength, right, new_right);
     }
     if (g_log_sticks && now >= g_next_stick_log && (stick::Length(left) > 0.0f || stick::Length(right) > 0.0f)) {

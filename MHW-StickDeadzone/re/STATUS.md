@@ -12,7 +12,9 @@ Read this first when resuming. Evidence for every claim is in [FINDINGS.md](FIND
 
 - User, with calibrated TMR sticks: "Much better now." Scaling "about right". Left stick: wants deadzone 0.05, then reacts to the slightest touch. Right stick: "still needs >0.05 to start moving even with 0 deadzone set." Log confirms the remap (right -0.012 in, -0.160 to the game).
 - Cause (inferred from FINDINGS, main camera): the camera squares each axis, so 0.15 to 0.19 give 2.3% to 3.6% of full speed, too slow to see.
-- Deployed 01:03:35 (commit `8647a00`): with Response=Linear the user said "Now it triggers correctly, but the response itself feels off. Game was perfect by feel." Linear is replaced by `[RightStick] MinSpeed` (default 0.05): the travel starts at sqrt(MinSpeed) on the game's range instead of the cut, so the first touch turns the camera at 5% and the game's squared curve takes it to full speed. Waiting for the game to close to deploy; the installed ini has left 0.05, right 0.0, MinSpeed=0.05, LogSticks=1.
+- Deployed 01:03:35 (commit `8647a00`): with Response=Linear the user said "Now it triggers correctly, but the response itself feels off. Game was perfect by feel." Linear is replaced by `[RightStick] MinSpeed` (default 0.05): the travel starts at sqrt(MinSpeed) on the game's range instead of the cut, so the first touch turns the camera at 5% and the game's squared curve takes it to full speed. Deployed 01:14:37 (commit `d39872b`, DLL SHA-256 `2102D0A06D47DC58BDCD5D0AF802CCAD5C1E2879100F24D6E24921DC71F04E27`), not yet tried in game; the installed ini has left 0.05, right 0.0, MinSpeed=0.05, LogSticks=1.
+
+- Deployed 01:14:37 (commit `d39872b`, MinSpeed): "I don't think MinSpeed is the issue - I can stay at 0.03 for hours, and the camera won't move." Cause: the right helper's gate, length >= `rPlayerParam+0x128` (0.25); see FINDINGS. MinSpeed and per-axis remapping are removed; the right stick is now remapped radially onto 0.25..1 like the left one onto 0.30..1. Built, waiting for the game to close to deploy; installed ini: left 0.05, right 0.0, LogSticks=1.
 
 ## Next
 
