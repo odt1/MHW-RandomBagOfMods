@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MHWAutoAutoSort VERSION 0.9.0 LANGUAGES CXX)
-set(AUTO_AUTO_SORT_VERSION "${PROJECT_VERSION}-beta")
+set(AUTO_AUTO_SORT_VERSION "${PROJECT_VERSION}")
 
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "MHW Auto-Auto-Sort requires Windows x64 and MSVC.")

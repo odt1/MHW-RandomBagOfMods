@@ -30,7 +30,7 @@ ctest --preset test-release
 ## Deploy and package
 
 - `tools/deploy.ps1` refuses while the game runs, backs up the installed DLL and PDB into `re/deployment-backups/`, copies and verifies the new ones.
-- `tools/package.ps1` builds `dist/MHW-AutoAutoSort-<version>-beta.zip` (DLL in `nativePC\plugins`, README, notices).
+- `tools/package.ps1` builds `dist/MHW-AutoAutoSort-<version>.zip` (DLL in `nativePC\plugins`, README, notices).
 - `README.nexus.bbcode` is the Nexus Mods description; keep it in step with `README.md`.
 
 ## Live tools (`tools/live`)

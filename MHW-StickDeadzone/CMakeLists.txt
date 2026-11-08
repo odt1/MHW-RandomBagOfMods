@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MHWStickDeadzone VERSION 0.1.0 LANGUAGES CXX)
-set(STICK_DEADZONE_VERSION "${PROJECT_VERSION}-beta")
+set(STICK_DEADZONE_VERSION "${PROJECT_VERSION}")
 
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "MHW Stick Deadzone requires Windows x64 and MSVC.")

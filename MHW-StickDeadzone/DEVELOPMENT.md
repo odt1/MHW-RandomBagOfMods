@@ -34,7 +34,7 @@ ctest --preset test-release
 ## Deploy and package
 
 - `tools/deploy.ps1 -BuildDir build\release` refuses while the game runs, backs up the installed DLL and PDB into `re/deployment-backups/`, copies and verifies the new ones.
-- `tools/package.ps1` builds `dist/MHW-StickDeadzone-<version>-beta.zip` (DLL in `nativePC\plugins`, README, notices).
+- `tools/package.ps1` builds `dist/MHW-StickDeadzone-<version>.zip` (DLL in `nativePC\plugins`, README, notices).
 
 ## Tools
 
@@ -59,4 +59,4 @@ Frida scripts used for the reverse engineering (`tools/live`). Run with `frida -
 
 ## Source boundaries
 
-Native code in `src`, tools in `tools`, host tests in `tests`, evidence in `re`. The game executable, its unpacked copy and the BN database are local inputs kept in the FairTransmog project (`..\re\inputs\mhw-current`), not here.
+Native code in `src`, tools in `tools`, host tests in `tests`, evidence in `re`. The game executable, its unpacked copy and the BN database are local inputs kept in the FairTransmog project (`C:\Projects\MHW Mods\re\inputs\mhw-current`), not here.

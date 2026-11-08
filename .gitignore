@@ -1,0 +1,4 @@
+# Local tool settings and build noise at the repository root
+.claude/
+.vs/
+__pycache__/

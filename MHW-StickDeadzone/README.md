@@ -52,7 +52,7 @@ Delete `MHW-StickDeadzone.dll`, `.ini` and `.log` from `nativePC\plugins`. Nothi
 - With Steam Input enabled for the game, Steam applies its own deadzone before the game sees the pad. Set it to 0 in Steam's controller settings for Monster Hunter: World, or turn Steam Input off for the game.
 - Only the hunter's movement and the main camera were measured. A few other screens read the sticks with their own built-in deadzones (some aiming and special camera modes, the guild card camera, some menus); they keep part of theirs.
 - Every speed the game had is still there, but it now comes a little earlier in the stick's travel, because the part that used to do nothing is used too.
-- This is a beta, tested offline. Multiplayer is untested.
+- Tested offline. Multiplayer is untested.
 
 ## Reporting problems
 

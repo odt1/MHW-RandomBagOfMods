@@ -10,7 +10,7 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Version = [regex]::Match((Get-Content -LiteralPath (Join-Path $ProjectRoot 'CMakeLists.txt') -Raw),
     'project\(MHWStickDeadzone VERSION ([0-9.]+)').Groups[1].Value
 if (-not $Version) { throw 'Could not read the project version from CMakeLists.txt.' }
-$Name = "MHW-StickDeadzone-$Version-beta"
+$Name = "MHW-StickDeadzone-$Version"
 
 $Dll = Join-Path $BuildDir 'MHW-StickDeadzone.dll'
 if (-not (Test-Path -LiteralPath $Dll -PathType Leaf)) { throw "Built DLL not found: $Dll" }

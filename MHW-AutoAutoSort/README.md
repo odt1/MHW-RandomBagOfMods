@@ -42,7 +42,7 @@ Delete `MHW-AutoAutoSort.dll`, `.ini` and `.log` from `nativePC\plugins`. The po
 
 ## Known limitations
 
-- This is a beta, tested offline on a single character. Multiplayer is untested.
+- Tested offline on a single character. Multiplayer is untested.
 - A manual item bar arrangement is replaced by pouch order the next time the pouch or the bar changes. Set `ItemBar=0` to keep your own order. Item bars saved in item loadouts are not changed.
 - Sorting runs along with the on-screen item bar, so while the HUD is hidden it may wait until the HUD shows again.
 
